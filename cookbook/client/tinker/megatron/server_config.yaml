@@ -21,6 +21,8 @@ applications:
     route_prefix: /api/v1          # API endpoint prefix (Tinker-compatible)
     import_path: server            # Python module to import
     args:
+      server_config:
+        per_token_model_limit: 3      # Maximum number of models (adapters) per token (server-globally enforced)
 
     deployments:
       - name: TinkerCompatServer
@@ -33,7 +35,6 @@ applications:
           runtime_env:
             env_vars:
               TWINKLE_TRUST_REMOTE_CODE: "0"
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"
 
   # 3. Sampler Service - Runs inference / sampling using vLLM engine
   #    Used for generating text from the model (e.g., evaluating LoRA results).
@@ -52,7 +53,7 @@ applications:
       device_group:                   # Logical device group for the sampler
         name: sampler
         gpus_per_worker: 1
-        ranks: [0,1,2,3]                    # GPU rank indices to use
+        ranks: 4                   # GPU rank indices to use
         device_type: cuda
       device_mesh:
         device_type: cuda
@@ -71,7 +72,6 @@ applications:
           runtime_env:
             env_vars:
               TWINKLE_TRUST_REMOTE_CODE: "0"
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"
 
   # 2. Model Service (commented out) - Would host the base model for training.
   #    Uncomment and configure if you need a training model worker.
@@ -86,7 +86,7 @@ applications:
       nproc_per_node: 4                           # Number of GPU processes per node
       device_group:
         name: model
-        ranks: [4,5,6,7]                              # GPU rank indices
+        ranks: 4       # GPU rank indices
         device_type: cuda
       device_mesh:
         device_type: cuda
@@ -97,7 +97,6 @@ applications:
         rps_limit: 20                               # Max requests per second
         tps_limit: 16000                            # Max tokens per second
       adapter_config:
-        per_token_adapter_limit: 3                # Max concurrent LoRA adapters
         adapter_timeout: 30                       # Seconds before idle adapter unload
         adapter_max_lifetime: 36000               # Maximum lifetime of an adapter in seconds (e.g., 10 hours)
     deployments:
@@ -111,4 +110,3 @@ applications:
           runtime_env:
             env_vars:
               TWINKLE_TRUST_REMOTE_CODE: "0"
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"

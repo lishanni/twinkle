@@ -82,10 +82,6 @@ def build_server_app(deploy_options: dict[str, Any],
             self.client = httpx.AsyncClient(timeout=None, trust_env=False)
             self.route_prefix = kwargs.get('route_prefix', '/api/v1')
             self.supported_models = self.normalize_models(supported_models) or [
-                types.SupportedModel(model_name='Qwen/Qwen2.5-0.5B-Instruct'),
-                types.SupportedModel(model_name='Qwen/Qwen2.5-3B-Instruct'),
-                types.SupportedModel(model_name='Qwen/Qwen2.5-7B-Instruct'),
-                types.SupportedModel(model_name='Qwen/Qwen2.5-72B-Instruct'),
                 types.SupportedModel(model_name='Qwen/Qwen3-30B-A3B-Instruct-2507'),
             ]
             # Lock for ModelScope config file operations (login writes, get_user_info reads)
@@ -94,16 +90,17 @@ def build_server_app(deploy_options: dict[str, Any],
         def normalize_models(self, supported_models):
             # Normalize supported_models to objects; passing raw dicts can trigger internal errors
             # when creating LoRA training clients via the tinker API.
-            if supported_models:
-                normalized = []
-                for item in supported_models:
-                    if isinstance(item, types.SupportedModel):
-                        normalized.append(item)
-                    elif isinstance(item, dict):
-                        normalized.append(types.SupportedModel(**item))
-                    else:
-                        normalized.append(types.SupportedModel(name=item))
-                return normalized
+            if not supported_models:
+                return []
+            normalized = []
+            for item in supported_models:
+                if isinstance(item, types.SupportedModel):
+                    normalized.append(item)
+                elif isinstance(item, dict):
+                    normalized.append(types.SupportedModel(**item))
+                elif isinstance(item, str):
+                    normalized.append(types.SupportedModel(model_name=item))
+            return normalized
 
         def _validate_base_model(self, base_model: str) -> None:
             """Validate that base_model is in supported_models list.

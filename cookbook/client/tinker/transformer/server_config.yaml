@@ -21,7 +21,8 @@ applications:
     route_prefix: /api/v1          # API endpoint prefix (Tinker-compatible)
     import_path: server            # Python module to import
     args:
-
+      server_config:
+        per_token_model_limit: 3      # Maximum number of models (adapters) per token (server-globally enforced)
     deployments:
       - name: TinkerCompatServer
         autoscaling_config:
@@ -52,7 +53,6 @@ applications:
         rps_limit: 100                             # Max requests per second
         tps_limit: 100000                           # Max tokens per second
       adapter_config:
-        per_token_adapter_limit: 30                # Max concurrent LoRA adapters
         adapter_timeout: 1800                      # Seconds before idle adapter unload
     deployments:
       - name: ModelManagement
@@ -65,7 +65,6 @@ applications:
           runtime_env:
             env_vars:
               TWINKLE_TRUST_REMOTE_CODE: "0"
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"
 
   # 3. Sampler Service - Runs inference / sampling using vLLM engine
   #    Used for generating text from the model (e.g., evaluating LoRA results).
@@ -102,4 +101,3 @@ applications:
           runtime_env:
             env_vars:
               TWINKLE_TRUST_REMOTE_CODE: "0"
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"

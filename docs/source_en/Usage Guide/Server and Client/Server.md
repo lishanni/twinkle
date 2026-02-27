@@ -55,11 +55,8 @@ This configuration starts 3 nodes:
 Before starting the Server, you need to set the following environment variables:
 
 ```bash
-export DEVICE_COUNT_PER_PHYSICAL_NODE=8  # Specify the total number of GPUs on each physical machine
 export TWINKLE_TRUST_REMOTE_CODE=0       # Whether to trust remote code (security consideration)
 ```
-
-> **Important Note**: `DEVICE_COUNT_PER_PHYSICAL_NODE` must be set to the actual number of physical GPUs on the machine, which is crucial for correctly parsing the `ranks` configuration.
 
 ### Node Rank in YAML Configuration
 
@@ -117,7 +114,6 @@ applications:
 **Important notes:**
 - The `ranks` configuration uses **physical GPU card numbers**, directly corresponding to the actual GPU devices on the machine
 - The `device_mesh` configuration uses parameters like `dp_size`, `tp_size`, `pp_size`, `ep_size` instead of the original `mesh` and `mesh_dim_names`
-- The environment variable `DEVICE_COUNT_PER_PHYSICAL_NODE` must be set to inform the system of the total number of physical GPUs on each machine
 - Different components will be automatically assigned to different Nodes
 - Ray will automatically schedule to the appropriate Node based on resource requirements (`num_gpus`, `num_cpus` in `ray_actor_options`)
 
@@ -214,7 +210,6 @@ CLI supported parameters:
 | `-c, --config` | YAML configuration file path (required) | — |
 | `-t, --server-type` | Server mode: `twinkle` or `tinker` | `twinkle` |
 | `--namespace` | Ray namespace | tinker mode defaults to `twinkle_cluster` |
-| `--no-wait` | Do not block and wait (daemon mode) | `False` |
 | `--log-level` | Log level | `INFO` |
 
 ## YAML Configuration Details
@@ -264,7 +259,6 @@ applications:
       use_megatron: false                              # Use Transformers backend
       model_id: "ms://Qwen/Qwen2.5-7B-Instruct"      # ModelScope model identifier
       adapter_config:                                  # LoRA adapter configuration
-        per_token_adapter_limit: 30   # Maximum number of LoRAs that can be activated simultaneously
         adapter_timeout: 1800         # Idle adapter timeout unload time (seconds)
       nproc_per_node: 2               # Number of GPU processes per node
       device_group:                   # Logical device group
@@ -359,6 +353,8 @@ applications:
     route_prefix: /api/v1              # Tinker protocol API prefix
     import_path: server
     args:
+      server_config:
+        per_token_model_limit: 30     # Maximum number of models (adapters) per token (server-global)
     deployments:
       - name: TinkerCompatServer
         autoscaling_config:
@@ -393,7 +389,6 @@ applications:
           num_cpus: 0.1
           runtime_env:
             env_vars:
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"  # Total number of physical GPUs on each machine
 
   # 3. Sampler service (optional, for inference sampling)
   - name: sampler-Qwen2.5-0.5B-Instruct
@@ -425,7 +420,6 @@ applications:
           num_gpus: 1                 # Sampler needs independent GPU
           runtime_env:
             env_vars:
-              DEVICE_COUNT_PER_PHYSICAL_NODE: "8"  # Total number of physical GPUs on each machine
 ```
 
 ## Configuration Item Description
@@ -471,6 +465,5 @@ device_mesh:
 **Environment variables:**
 
 ```bash
-export DEVICE_COUNT_PER_PHYSICAL_NODE=8  # Total number of GPUs on each physical machine (must be set)
 export TWINKLE_TRUST_REMOTE_CODE=0       # Whether to trust remote code
 ```

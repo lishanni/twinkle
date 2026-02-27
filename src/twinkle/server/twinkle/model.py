@@ -171,14 +171,24 @@ def build_model_app(model_id: str,
                 self.device_mesh = DeviceMesh(**device_mesh)
             else:
                 self.device_mesh = DeviceMesh.from_sizes(**device_mesh)
+            replica_context = serve.get_replica_context()
+            replica_id = replica_context.replica_id.unique_id
             if use_megatron:
                 from twinkle.model import MultiLoraMegatronModel
                 self.model = MultiLoraMegatronModel(
-                    model_id=model_id, device_mesh=self.device_mesh, remote_group=self.device_group.name, **kwargs)
+                    model_id=model_id,
+                    device_mesh=self.device_mesh,
+                    remote_group=self.device_group.name,
+                    instance_id=replica_id,
+                    **kwargs)
             else:
                 from twinkle.model import MultiLoraTransformersModel
                 self.model = MultiLoraTransformersModel(
-                    model_id=model_id, device_mesh=self.device_mesh, remote_group=self.device_group.name, **kwargs)
+                    model_id=model_id,
+                    device_mesh=self.device_mesh,
+                    remote_group=self.device_group.name,
+                    instance_id=replica_id,
+                    **kwargs)
 
             # Initialize state before adapter manager (mixin needs self.state)
             self.state: ServerStateProxy = get_server_state()
@@ -506,7 +516,7 @@ def build_model_app(model_id: str,
             token = request.state.token
             training_run_manager = create_training_run_manager(token)
 
-            # Register adapter FIRST (limit check happens inside register_adapter)
+            # Register adapter FIRST
             self.register_adapter(adapter_name, token)
 
             # Create adapter AFTER successful registration

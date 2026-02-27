@@ -113,7 +113,7 @@ pip install -e .
 |                   | [deepseek-ai/DeepSeek-R1](https://modelscope.cn/models/deepseek-ai/DeepSeek-R1)                                          | transformers>=4.39.3 | ✅               | [deepseek-ai/DeepSeek-R1](https://huggingface.co/deepseek-ai/DeepSeek-R1)                                     |
 | deepSeek-r1-distill | [deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B](https://modelscope.cn/models/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B) ~32B | transformers>=4.37   | ✅               | [deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B](https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B) |
 
-更详细的模型支持列表 👉  [快速开始.md](https://github.com/modelscope/twinkle/blob/dev/docs/source/%E4%BD%BF%E7%94%A8%E6%8C%87%E5%BC%95/%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B.md)
+更详细的模型支持列表 👉  [快速开始.md](docs/source_zh/使用指引/快速开始.md)
 
 ## 示例代码
 
@@ -186,7 +186,7 @@ if __name__ == '__main__':
 import os
 from tqdm import tqdm
 from tinker import types
-from twinkle_client import init_tinker_compat_client
+from twinkle_client import init_tinker_client
 from twinkle.dataloader import DataLoader
 from twinkle.dataset import Dataset, DatasetMeta
 from twinkle.preprocessor import SelfCognitionProcessor
@@ -203,8 +203,11 @@ dataset.map(SelfCognitionProcessor('twinkle Model', 'twinkle Team'), load_from_c
 dataset.encode(batched=True, load_from_cache_file=False)
 dataloader = DataLoader(dataset=dataset, batch_size=8)
 
-# Initialize tinker client
-service_client = init_tinker_compat_client(base_url, api_key)
+# Initialize Tinker client before importing ServiceClient
+init_tinker_client()
+from tinker import ServiceClient
+
+service_client = ServiceClient(base_url=base_url, api_key=api_key)
 training_client = service_client.create_lora_training_client(base_model=base_model[len('ms://'):], rank=16)
 
 # Training loop: use input_feature_to_datum to transfer the input format

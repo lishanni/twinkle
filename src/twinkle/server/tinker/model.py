@@ -9,7 +9,6 @@ It handles:
 3. Checkpoint management (save/load weights)
 4. Multi-user support with token-based isolation
 """
-import os
 import traceback
 from fastapi import FastAPI, Request
 from peft import LoraConfig
@@ -100,15 +99,25 @@ def build_model_app(model_id: str,
             else:
                 self.device_mesh = DeviceMesh.from_sizes(**device_mesh)
             self.use_megatron = use_megatron
+            replica_context = serve.get_replica_context()
+            replica_id = replica_context.replica_id.unique_id
             # Initialize model immediately - choose backend based on use_megatron
             if use_megatron:
                 from .common.megatron_model import TwinkleCompatMegatronModel
                 self.model = TwinkleCompatMegatronModel(
-                    model_id=model_id, device_mesh=self.device_mesh, remote_group=self.device_group.name, **kwargs)
+                    model_id=model_id,
+                    device_mesh=self.device_mesh,
+                    remote_group=self.device_group.name,
+                    instance_id=replica_id,
+                    **kwargs)
             else:
                 from .common.transformers_model import TwinkleCompatTransformersModel
                 self.model = TwinkleCompatTransformersModel(
-                    model_id=model_id, device_mesh=self.device_mesh, remote_group=self.device_group.name, **kwargs)
+                    model_id=model_id,
+                    device_mesh=self.device_mesh,
+                    remote_group=self.device_group.name,
+                    instance_id=replica_id,
+                    **kwargs)
             self.base_model = model_id
             self.state: ServerStateProxy = get_server_state()
 
@@ -117,6 +126,19 @@ def build_model_app(model_id: str,
 
             self._init_adapter_manager(**adapter_config)
             self.start_adapter_countdown()
+
+        """
+        TODO This is a cache system, we must change to sticky routing
+            Reference docs:
+            1. [Now]https://docs.ray.io/en/latest/serve/model-multiplexing.html
+            2. https://docs.ray.io/en/latest/serve/llm/architecture/routing-policies.html
+            3. https://github.com/ray-project/ray/pull/56855/changes
+            4. Direct call actor instead of http or handler in server.py
+        """
+
+        # @serve.multiplexed(max_num_models_per_replica=kwargs.get('max_loras', 5))
+        # async def get_multiplexed_adapter(self, request_id: str):
+        # return request_id
 
         def _cleanup_adapter(self, adapter_name: str) -> None:
             """Common adapter cleanup logic used by both manual unload and automatic expiration.
@@ -166,18 +188,21 @@ def build_model_app(model_id: str,
             Returns:
                 UntypedAPIFuture wrapping CreateModelResponse with model_id
             """
-            # Register a new model_id for each create_model call
-            model_id = self.state.register_model(body.model_dump(), token=request.state.token)
 
             async def _create_adapter():
+                model_id = None
                 try:
+                    # Register a new model_id for each create_model call
+                    model_id = self.state.register_model(body.model_dump(), token=request.state.token)
+
+                    # Create a new LoRA adapter for the model
                     if body.lora_config:
                         # TODO: support more lora config parameters, train_unembed, etc.
                         lora_cfg = LoraConfig(r=body.lora_config.rank, target_modules='all-linear')
 
                         adapter_name = self.get_adapter_name(adapter_name=model_id)
 
-                        # Register adapter FIRST (limit check happens inside register_adapter)
+                        # Register adapter FIRST
                         self.register_adapter(adapter_name, request.state.token, session_id=body.session_id)
 
                         # Create adapter AFTER successful registration
@@ -196,8 +221,9 @@ def build_model_app(model_id: str,
                     return types.CreateModelResponse(model_id=model_id)
                 except Exception:
                     # Ensure we don't leave stale grad state.
-                    adapter_name = self.get_adapter_name(adapter_name=model_id)
-                    self._cleanup_adapter(adapter_name)
+                    if model_id:
+                        adapter_name = self.get_adapter_name(adapter_name=model_id)
+                        self._cleanup_adapter(adapter_name)
 
                     logger.error(traceback.format_exc())
                     return types.RequestFailedResponse(
@@ -207,7 +233,6 @@ def build_model_app(model_id: str,
 
             return await self.schedule_task(
                 _create_adapter,
-                model_id=model_id,
                 token=request.state.token,
                 task_type='create_model',
             )
