@@ -79,12 +79,15 @@ class ServiceProxy:
         Returns:
             Cleaned headers safe for proxying
         """
+        logger.info('prepare_headers request_headers=%s', request_headers)
         headers = dict(request_headers)
         # Remove headers that should not be forwarded
         headers.pop('host', None)
         headers.pop('content-length', None)
-        # Add serve_multiplexed_model_id for sticky sessions
-        headers['serve_multiplexed_model_id'] = request_headers.get('X-Ray-Serve-Request-Id')
+        # Add serve_multiplexed_model_id for sticky sessions if present
+        request_id = request_headers.get('X-Ray-Serve-Request-Id')
+        if request_id is not None:
+            headers['serve_multiplexed_model_id'] = request_id
         return headers
 
     async def proxy_request(
