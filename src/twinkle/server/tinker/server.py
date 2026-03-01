@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import httpx
-import logging
 import os
 from fastapi import FastAPI, HTTPException, Request, Response
 from ray import serve
@@ -24,9 +23,10 @@ from twinkle.hub import HubOperation
 from twinkle.server.utils.state import get_server_state
 from twinkle.server.utils.task_queue import QueueState
 from twinkle.server.utils.validation import get_token_from_request, verify_request_token
+from twinkle.utils.logger import get_logger
 from .common.io_utils import create_checkpoint_manager, create_training_run_manager
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def build_server_app(deploy_options: dict[str, Any],

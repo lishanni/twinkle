@@ -101,7 +101,7 @@ class ServerLauncher:
                 'build_sampler_app': build_sampler_app,
             }
         else:  # twinkle
-            from twinkle.server import build_model_app, build_processor_app, build_sampler_app, build_server_app
+            from twinkle.server.twinkle import build_model_app, build_processor_app, build_sampler_app, build_server_app
             self._builders = {
                 'build_server_app': build_server_app,
                 'build_model_app': build_model_app,
