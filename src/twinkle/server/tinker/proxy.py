@@ -87,7 +87,7 @@ class ServiceProxy:
         headers.pop('content-length', None)
         # Add serve_multiplexed_model_id for sticky sessions if present
         # Use case-insensitive lookup from original request_headers
-        request_id = request_headers.get('x-ray-serve-request-id')
+        request_id = request_headers.get('X-Ray-Serve-Request-Id')
         if request_id is not None:
             headers['serve_multiplexed_model_id'] = request_id
         return headers
@@ -119,14 +119,13 @@ class ServiceProxy:
 
         try:
             # Debug logging for troubleshooting proxy issues
-            if os.environ.get('TWINKLE_DEBUG_PROXY', '0') == '1':
-                logger.info(
-                    'proxy_request service=%s endpoint=%s target_url=%s request_id=%s',
-                    service_type,
-                    endpoint,
-                    target_url,
-                    headers.get('serve_multiplexed_model_id'),
-                )
+            logger.debug(
+                'proxy_request service=%s endpoint=%s target_url=%s request_id=%s',
+                service_type,
+                endpoint,
+                target_url,
+                headers.get('serve_multiplexed_model_id'),
+            )
 
             # Forward the request to the target service
             response = await self.client.request(
@@ -138,12 +137,11 @@ class ServiceProxy:
             )
 
             # Debug logging for response
-            if os.environ.get('TWINKLE_DEBUG_PROXY', '0') == '1':
-                logger.info(
-                    'proxy_response status=%s body_preview=%s',
-                    response.status_code,
-                    response.text[:200],
-                )
+            logger.debug(
+                'proxy_response status=%s body_preview=%s',
+                response.status_code,
+                response.text[:200],
+            )
 
             return Response(
                 content=response.content,
