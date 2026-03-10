@@ -2,7 +2,7 @@
 """
 Tinker-compatible gateway handler mixin.
 
-All endpoints are prefixed /tinker/* and registered via _register_tinker_routes(app).
+All endpoints are prefixed /* and registered via _register_tinker_routes(app).
 Route closures use self.* directly (no request.state injection needed).
 """
 from __future__ import annotations
@@ -33,27 +33,27 @@ class TinkerGatewayHandlers:
 
     @staticmethod
     def _register_tinker_routes(app: FastAPI):
-        """Register all /tinker/* routes on the given FastAPI app."""
+        """Register all /* routes on the given FastAPI app."""
 
-        @app.get('/tinker/healthz')
+        @app.get('/healthz')
         async def healthz(self, request: Request) -> types.HealthResponse:
             return types.HealthResponse(status='ok')
 
-        @app.get('/tinker/get_server_capabilities')
+        @app.get('/get_server_capabilities')
         async def get_server_capabilities(self, request: Request) -> types.GetServerCapabilitiesResponse:
             return types.GetServerCapabilitiesResponse(supported_models=self.supported_models)
 
-        @app.post('/tinker/telemetry')
+        @app.post('/telemetry')
         async def telemetry(self, request: Request, body: types.TelemetrySendRequest) -> types.TelemetryResponse:
             return types.TelemetryResponse(status='accepted')
 
-        @app.post('/tinker/create_session')
+        @app.post('/create_session')
         async def create_session(self, request: Request,
                                  body: types.CreateSessionRequest) -> types.CreateSessionResponse:
             session_id = self.state.create_session(body.model_dump())
             return types.CreateSessionResponse(session_id=session_id)
 
-        @app.post('/tinker/session_heartbeat')
+        @app.post('/session_heartbeat')
         async def session_heartbeat(self, request: Request,
                                     body: types.SessionHeartbeatRequest) -> types.SessionHeartbeatResponse:
             alive = self.state.touch_session(body.session_id)
@@ -61,14 +61,14 @@ class TinkerGatewayHandlers:
                 raise HTTPException(status_code=404, detail='Unknown session')
             return types.SessionHeartbeatResponse()
 
-        @app.post('/tinker/create_sampling_session')
+        @app.post('/create_sampling_session')
         async def create_sampling_session(
                 self, request: Request,
                 body: types.CreateSamplingSessionRequest) -> types.CreateSamplingSessionResponse:
             sampling_session_id = self.state.create_sampling_session(body.model_dump())
             return types.CreateSamplingSessionResponse(sampling_session_id=sampling_session_id)
 
-        @app.post('/tinker/retrieve_future')
+        @app.post('/retrieve_future')
         async def retrieve_future(self, request: Request, body: types.FutureRetrieveRequest) -> Any:
             """Retrieve the result of an async task with long polling."""
             request_id = body.request_id
@@ -123,7 +123,7 @@ class TinkerGatewayHandlers:
 
         # --- Training Runs Endpoints ---
 
-        @app.get('/tinker/training_runs')
+        @app.get('/training_runs')
         async def get_training_runs(self,
                                     request: Request,
                                     limit: int = 20,
@@ -132,7 +132,7 @@ class TinkerGatewayHandlers:
             training_run_manager = create_training_run_manager(token, client_type='tinker')
             return training_run_manager.list_runs(limit=limit, offset=offset)
 
-        @app.get('/tinker/training_runs/{run_id}')
+        @app.get('/training_runs/{run_id}')
         async def get_training_run(self, request: Request, run_id: str) -> types.TrainingRun:
             token = get_token_from_request(request)
             training_run_manager = create_training_run_manager(token, client_type='tinker')
@@ -141,7 +141,7 @@ class TinkerGatewayHandlers:
                 raise HTTPException(status_code=404, detail=f'Training run {run_id} not found')
             return run
 
-        @app.get('/tinker/training_runs/{run_id}/checkpoints')
+        @app.get('/training_runs/{run_id}/checkpoints')
         async def get_run_checkpoints(self, request: Request, run_id: str) -> types.CheckpointsListResponse:
             token = get_token_from_request(request)
             checkpoint_manager = create_checkpoint_manager(token, client_type='tinker')
@@ -150,7 +150,7 @@ class TinkerGatewayHandlers:
                 raise HTTPException(status_code=404, detail=f'Training run {run_id} not found')
             return response
 
-        @app.delete('/tinker/training_runs/{run_id}/checkpoints/{checkpoint_id:path}')
+        @app.delete('/training_runs/{run_id}/checkpoints/{checkpoint_id:path}')
         async def delete_run_checkpoint(self, request: Request, run_id: str, checkpoint_id: str) -> Any:
             token = get_token_from_request(request)
             checkpoint_manager = create_checkpoint_manager(token, client_type='tinker')
@@ -159,7 +159,7 @@ class TinkerGatewayHandlers:
                 raise HTTPException(status_code=404, detail=f'Checkpoint {checkpoint_id} not found for run {run_id}')
             return None
 
-        @app.post('/tinker/weights_info')
+        @app.post('/weights_info')
         async def weights_info(self, request: Request, body: dict[str, Any]) -> types.WeightsInfoResponse:
             token = get_token_from_request(request)
             checkpoint_manager = create_checkpoint_manager(token, client_type='tinker')
@@ -169,7 +169,7 @@ class TinkerGatewayHandlers:
                 raise HTTPException(status_code=404, detail=f'Weights at {tinker_path} not found')
             return response
 
-        @app.post('/tinker/training_runs/{run_id}/checkpoints/{checkpoint_id:path}/publish')
+        @app.post('/training_runs/{run_id}/checkpoints/{checkpoint_id:path}/publish')
         async def publish_checkpoint(self, request: Request, run_id: str, checkpoint_id: str) -> Response:
             token = get_token_from_request(request)
 
@@ -206,42 +206,42 @@ class TinkerGatewayHandlers:
 
         # --- Model Proxy Endpoints ---
 
-        @app.post('/tinker/create_model')
+        @app.post('/create_model')
         async def create_model(self, request: Request, body: types.CreateModelRequest) -> Any:
             self._validate_base_model(body.base_model)
             return await self.proxy.proxy_to_model(request, 'create_model', body.base_model)
 
-        @app.post('/tinker/get_info')
+        @app.post('/get_info')
         async def get_info(self, request: Request, body: types.GetInfoRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'get_info', self._get_base_model(body.model_id))
 
-        @app.post('/tinker/unload_model')
+        @app.post('/unload_model')
         async def unload_model(self, request: Request, body: types.UnloadModelRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'unload_model', self._get_base_model(body.model_id))
 
-        @app.post('/tinker/forward')
+        @app.post('/forward')
         async def forward(self, request: Request, body: types.ForwardRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'forward', self._get_base_model(body.model_id))
 
-        @app.post('/tinker/forward_backward')
+        @app.post('/forward_backward')
         async def forward_backward(self, request: Request, body: types.ForwardBackwardRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'forward_backward', self._get_base_model(body.model_id))
 
-        @app.post('/tinker/optim_step')
+        @app.post('/optim_step')
         async def optim_step(self, request: Request, body: types.OptimStepRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'optim_step', self._get_base_model(body.model_id))
 
-        @app.post('/tinker/save_weights')
+        @app.post('/save_weights')
         async def save_weights(self, request: Request, body: types.SaveWeightsRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'save_weights', self._get_base_model(body.model_id))
 
-        @app.post('/tinker/load_weights')
+        @app.post('/load_weights')
         async def load_weights(self, request: Request, body: types.LoadWeightsRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'load_weights', self._get_base_model(body.model_id))
 
         # --- Sampler Proxy Endpoints ---
 
-        @app.post('/tinker/asample')
+        @app.post('/asample')
         async def asample(self, request: Request, body: types.SampleRequest) -> Any:
             base_model = body.base_model
             if not base_model and body.sampling_session_id:
@@ -250,7 +250,7 @@ class TinkerGatewayHandlers:
                     base_model = session.get('base_model')
             return await self.proxy.proxy_to_sampler(request, 'asample', base_model)
 
-        @app.post('/tinker/save_weights_for_sampler')
+        @app.post('/save_weights_for_sampler')
         async def save_weights_for_sampler(self, request: Request, body: types.SaveWeightsForSamplerRequest) -> Any:
             return await self.proxy.proxy_to_model(request, 'save_weights_for_sampler',
                                                    self._get_base_model(body.model_id))

@@ -1,8 +1,5 @@
 # Twinkle Server Configuration - Tinker-Compatible Transformers Backend
 
-# Server protocol type: "tinker" enables the Tinker-compatible API
-server_type: tinker
-
 # proxy_location: determines where the HTTP proxy runs.
 # "EveryNode" means each Ray node runs its own proxy (good for multi-node).
 proxy_location: EveryNode
