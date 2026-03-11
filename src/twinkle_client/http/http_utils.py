@@ -1,7 +1,7 @@
 import requests
 from typing import Any, Callable, Dict, Mapping, Optional
 
-from .utils import get_api_key, get_base_url, get_request_id
+from .utils import get_api_key, get_base_url, get_request_id, get_session_id
 
 
 def _build_headers(additional_headers: Optional[Dict[str, str]] = None) -> Dict[str, str]:
@@ -16,9 +16,13 @@ def _build_headers(additional_headers: Optional[Dict[str, str]] = None) -> Dict[
     """
     headers = {
         'X-Ray-Serve-Request-Id': get_request_id(),
+        'serve_multiplexed_model_id': get_request_id(),  # For model multiplexing
         'Authorization': 'Bearer ' + get_api_key(),
         'Twinkle-Authorization': 'Bearer ' + get_api_key(),  # For server compatibility
     }
+
+    if session_id := get_session_id():
+        headers['X-Twinkle-Session-Id'] = session_id
 
     if additional_headers:
         headers.update(additional_headers)

@@ -243,7 +243,7 @@ def generate_processors():
             if typing_imports:
                 lines.append(f"from typing import {', '.join(sorted(typing_imports))}")
             lines.extend([
-                'from twinkle_client.http import http_post, heartbeat_manager',
+                'from twinkle_client.http import http_post',
             ])
             lines.extend(sorted(twinkle_imports))
 
@@ -358,13 +358,6 @@ class {class_name}({inheritance}):
         )
         response.raise_for_status()
         self.processor_id = response.json()['processor_id']
-        heartbeat_manager.register_processor(self.processor_id)
-
-    def __del__(self):
-        try:
-            heartbeat_manager.unregister_processor(self.processor_id)
-        except:
-            pass
 
     '''
 
@@ -444,18 +437,36 @@ def generate_models():
     client_module_path = src_client_path / 'model'
     client_module_path.mkdir(parents=True, exist_ok=True)
 
-    model_code = AUTO_GEN_WARNING + '''from typing import Any, Optional, Union, Type, Dict, Literal, List
-import uuid
-from twinkle_client.http import http_post, heartbeat_manager
-from twinkle import DeviceMesh
-from twinkle.data_format import InputFeature, Trajectory
+    model_code = AUTO_GEN_WARNING + '''from typing import Any, Dict, Optional
+from twinkle_client.http import http_post
+from twinkle_client.types.model import (
+    BackwardResponse,
+    CalculateLossResponse,
+    CalculateMetricResponse,
+    ClipGradNormResponse,
+    ForwardBackwardResponse,
+    ForwardResponse,
+    GetStateDictResponse,
+    GetTrainConfigsResponse,
+    LoadResponse,
+    LrStepResponse,
+    SaveResponse,
+    SetLossResponse,
+    SetLrSchedulerResponse,
+    SetOptimizerResponse,
+    SetProcessorResponse,
+    SetTemplateResponse,
+    StepResponse,
+    UploadToHubResponse,
+    ZeroGradResponse,
+)
 
 
 class MultiLoraTransformersModel:
     """Client wrapper for TwinkleModel that calls server HTTP endpoints.
 
     This client manages adapters and sends training/inference requests to the model server.
-    Each adapter has its own lifecycle managed through automatic heartbeats.
+    The server-side session (managed by TwinkleClient) keeps the model alive.
     """
 
     def __init__(self, model_id: str, **kwargs):
@@ -473,208 +484,193 @@ class MultiLoraTransformersModel:
         )
         response.raise_for_status()
 
-    def _send_adapter_heartbeat(self):
-        """Internal method to send adapter heartbeat."""
-        response = http_post(
-            url=f'{self.server_url}/heartbeat',
-            json_data={'adapter_name': self.adapter_name}
-        )
-        response.raise_for_status()
-
-    def add_adapter_to_model(self, adapter_name: str, config: Dict[str, Any], **kwargs):
-        """Add a new adapter to the model and start automatic heartbeat."""
+    def add_adapter_to_model(self, adapter_name: str, config: Dict[str, Any], **kwargs) -> None:
+        """Add a new adapter to the model."""
         response = http_post(
             url=f'{self.server_url}/add_adapter_to_model',
             json_data={'adapter_name': adapter_name, 'config': config, **kwargs}
         )
         response.raise_for_status()
-
-        # Register adapter for automatic heartbeat after successful creation
         self.adapter_name = adapter_name
-        heartbeat_manager.register_adapter(
-            self.adapter_name,
-            self._send_adapter_heartbeat
-        )
 
-    def __del__(self):
-        """Cleanup: unregister adapter from heartbeat manager."""
-        try:
-            heartbeat_manager.unregister_adapter(self.adapter_name)
-        except:
-            pass
-
-    def forward(self, inputs: Any, **kwargs):
+    def forward(self, inputs: Any, **kwargs) -> ForwardResponse:
         """Execute forward pass on the model."""
         response = http_post(
             url=f'{self.server_url}/forward',
             json_data={'inputs': inputs, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return ForwardResponse(**response.json())
 
-    def forward_only(self, inputs: Any, **kwargs):
+    def forward_only(self, inputs: Any, **kwargs) -> ForwardResponse:
         """Execute forward pass without gradient computation."""
         response = http_post(
             url=f'{self.server_url}/forward_only',
             json_data={'inputs': inputs, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return ForwardResponse(**response.json())
 
-    def calculate_loss(self, **kwargs):
+    def calculate_loss(self, **kwargs) -> CalculateLossResponse:
         """Calculate loss from model outputs."""
         response = http_post(
             url=f'{self.server_url}/calculate_loss',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return CalculateLossResponse(**response.json())
 
-    def get_train_configs(self, **kwargs):
-        """Get training configs"""
+    def get_train_configs(self, **kwargs) -> GetTrainConfigsResponse:
+        """Get training configs."""
         response = http_post(
             url=f'{self.server_url}/get_train_configs',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return GetTrainConfigsResponse(**response.json())
 
-    def backward(self, **kwargs):
+    def backward(self, **kwargs) -> BackwardResponse:
         """Execute backward pass."""
         response = http_post(
             url=f'{self.server_url}/backward',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return BackwardResponse(**response.json())
 
-    def forward_backward(self, inputs: Any, **kwargs):
+    def forward_backward(self, inputs: Any, **kwargs) -> ForwardBackwardResponse:
         """Execute combined forward and backward pass."""
         response = http_post(
             url=f'{self.server_url}/forward_backward',
             json_data={'inputs': inputs, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return ForwardBackwardResponse(**response.json())
 
-    def step(self, **kwargs):
+    def step(self, **kwargs) -> StepResponse:
         """Execute optimizer step."""
         response = http_post(
             url=f'{self.server_url}/step',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return StepResponse(**response.json())
 
-    def zero_grad(self, **kwargs):
+    def zero_grad(self, **kwargs) -> ZeroGradResponse:
         """Zero out gradients."""
         response = http_post(
             url=f'{self.server_url}/zero_grad',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return ZeroGradResponse(**response.json())
 
-    def lr_step(self, **kwargs):
+    def lr_step(self, **kwargs) -> LrStepResponse:
         """Execute learning rate scheduler step."""
         response = http_post(
             url=f'{self.server_url}/lr_step',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return LrStepResponse(**response.json())
 
-    def set_loss(self, loss_cls: str, **kwargs):
+    def set_loss(self, loss_cls: str, **kwargs) -> SetLossResponse:
         """Set the loss function."""
         response = http_post(
             url=f'{self.server_url}/set_loss',
             json_data={'loss_cls': loss_cls, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return SetLossResponse(**response.json())
 
-    def clip_grad_norm(self, max_grad_norm: float=1.0, norm_type=2, **kwargs):
-        """Set the loss function."""
+    def clip_grad_norm(self, max_grad_norm: float = 1.0, norm_type: int = 2, **kwargs) -> ClipGradNormResponse:
+        """Clip gradient norm."""
         response = http_post(
             url=f'{self.server_url}/clip_grad_norm',
             json_data={'max_grad_norm': max_grad_norm, 'norm_type': norm_type, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return ClipGradNormResponse(**response.json())
 
-    def set_optimizer(self, optimizer_cls: str, **kwargs):
+    def set_optimizer(self, optimizer_cls: str, **kwargs) -> SetOptimizerResponse:
         """Set the optimizer."""
         response = http_post(
             url=f'{self.server_url}/set_optimizer',
             json_data={'optimizer_cls': optimizer_cls, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return SetOptimizerResponse(**response.json())
 
-    def set_lr_scheduler(self, scheduler_cls: str, **kwargs):
+    def set_lr_scheduler(self, scheduler_cls: str, **kwargs) -> SetLrSchedulerResponse:
         """Set the learning rate scheduler."""
         response = http_post(
             url=f'{self.server_url}/set_lr_scheduler',
             json_data={'scheduler_cls': scheduler_cls, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return SetLrSchedulerResponse(**response.json())
 
-    def save(self, name: str, **kwargs):
+    def save(self, name: str, **kwargs) -> SaveResponse:
         """Save model checkpoint."""
         response = http_post(
             url=f'{self.server_url}/save',
             json_data={'name': name, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return SaveResponse(**response.json())
 
-    def load(self, name: str, **kwargs):
+    def load(self, name: str, **kwargs) -> LoadResponse:
         """Load model checkpoint."""
         response = http_post(
             url=f'{self.server_url}/load',
             json_data={'name': name, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return LoadResponse(**response.json())
 
-    def set_template(self, template_cls: str, **kwargs):
+    def set_template(self, template_cls: str, **kwargs) -> SetTemplateResponse:
         """Set the template for data processing."""
         response = http_post(
             url=f'{self.server_url}/set_template',
             json_data={'template_cls': template_cls, 'adapter_name': self.adapter_name, 'model_id': self.model_id, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return SetTemplateResponse(**response.json())
 
-    def set_processor(self, processor_cls: str, **kwargs):
+    def set_processor(self, processor_cls: str, **kwargs) -> SetProcessorResponse:
         """Set the input processor."""
         response = http_post(
             url=f'{self.server_url}/set_processor',
             json_data={'processor_cls': processor_cls, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return SetProcessorResponse(**response.json())
 
-    def calculate_metric(self, is_training: bool = True, **kwargs):
+    def calculate_metric(self, is_training: bool = True, **kwargs) -> CalculateMetricResponse:
         """Calculate metrics from model outputs."""
         response = http_post(
             url=f'{self.server_url}/calculate_metric',
             json_data={'is_training': is_training, 'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return CalculateMetricResponse(**response.json())
 
-    def get_state_dict(self, **kwargs):
+    def get_state_dict(self, **kwargs) -> GetStateDictResponse:
         """Get model state dictionary."""
         response = http_post(
             url=f'{self.server_url}/get_state_dict',
             json_data={'adapter_name': self.adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()['result']
+        return GetStateDictResponse(**response.json())
 
-    def upload_to_hub(self, checkpoint_dir: str, hub_model_id: str, hub_token: Optional[str] = None, async_upload: bool = True):
+    def upload_to_hub(
+        self,
+        checkpoint_dir: str,
+        hub_model_id: str,
+        hub_token: Optional[str] = None,
+        async_upload: bool = True,
+    ) -> UploadToHubResponse:
         """Upload model checkpoint to hub.
 
         Args:
@@ -689,11 +685,11 @@ class MultiLoraTransformersModel:
                 'checkpoint_dir': checkpoint_dir,
                 'hub_model_id': hub_model_id,
                 'hub_token': hub_token,
-                'async_upload': async_upload
+                'async_upload': async_upload,
             }
         )
         response.raise_for_status()
-        return response.json()
+        return UploadToHubResponse(**response.json())
 '''
 
     # Write the model client file
@@ -721,9 +717,10 @@ def generate_samplers():
     client_module_path = src_client_path / 'sampler'
     client_module_path.mkdir(parents=True, exist_ok=True)
 
-    sampler_code = AUTO_GEN_WARNING + '''from typing import Any, Optional, List, Dict, Union
-from twinkle_client.http import http_post, heartbeat_manager
+    sampler_code = AUTO_GEN_WARNING + '''from typing import Any, Dict, List, Optional, Union
+from twinkle_client.http import http_post
 from twinkle.sampler.base import Sampler
+from twinkle_client.types.sampler import AddAdapterResponse, SampleResponseModel, SetTemplateResponse
 from peft import PeftConfig
 from twinkle.data_format import Trajectory, InputFeature
 
@@ -732,7 +729,7 @@ class vLLMSampler(Sampler):
     """Client wrapper for Sampler that calls server HTTP endpoints.
 
     This client manages sampling operations and adapter synchronization with the sampler server.
-    Each adapter has its own lifecycle managed through automatic heartbeats.
+    The server-side session (managed by TwinkleClient) keeps the sampler alive.
     """
 
     def __init__(self, model_id: str, **kwargs):
@@ -750,18 +747,8 @@ class vLLMSampler(Sampler):
         )
         response.raise_for_status()
 
-    def _send_adapter_heartbeat(self):
-        """Internal method to send adapter heartbeat."""
-        if not self.adapter_name:
-            return
-        response = http_post(
-            url=f'{self.server_url}/heartbeat',
-            json_data={'adapter_name': self.adapter_name}
-        )
-        response.raise_for_status()
-
-    def add_adapter_to_sampler(self, adapter_name: str, config: PeftConfig, **kwargs):
-        """Add a new adapter to the sampler and start automatic heartbeat."""
+    def add_adapter_to_sampler(self, adapter_name: str, config: PeftConfig, **kwargs) -> AddAdapterResponse:
+        """Add a new adapter to the sampler."""
         if isinstance(config, PeftConfig):
             config = config.__dict__
         response = http_post(
@@ -769,23 +756,8 @@ class vLLMSampler(Sampler):
             json_data={'adapter_name': adapter_name, 'config': config, **kwargs}
         )
         response.raise_for_status()
-
-        # Register adapter for automatic heartbeat after successful creation
         self.adapter_name = adapter_name
-        heartbeat_manager.register_adapter(
-            self.adapter_name,
-            self._send_adapter_heartbeat
-        )
-
-        return response.json()
-
-    def __del__(self):
-        """Cleanup: unregister adapter from heartbeat manager."""
-        try:
-            if self.adapter_name:
-                heartbeat_manager.unregister_adapter(self.adapter_name)
-        except:
-            pass
+        return AddAdapterResponse(**response.json())
 
     def sample(
         self,
@@ -794,7 +766,7 @@ class vLLMSampler(Sampler):
         adapter_name: str = '',
         adapter_uri: Optional[str] = None,
         num_samples: int = 1,
-    ) -> Dict[str, Any]:
+    ) -> SampleResponseModel:
         """Sample from the model.
 
         Args:
@@ -805,7 +777,7 @@ class vLLMSampler(Sampler):
             num_samples: Number of completions to generate per prompt.
 
         Returns:
-            Dict with 'sequences' list, each containing tokens, logprobs, stop_reason.
+            SampleResponseModel with 'sequences' list, each containing tokens, logprobs, stop_reason.
         """
         json_data = {
             'inputs': inputs,
@@ -821,16 +793,16 @@ class vLLMSampler(Sampler):
             json_data=json_data
         )
         response.raise_for_status()
-        return response.json()
+        return SampleResponseModel(**response.json())
 
-    def set_template(self, template_cls: str, adapter_name: str = '', **kwargs):
+    def set_template(self, template_cls: str, adapter_name: str = '', **kwargs) -> SetTemplateResponse:
         """Set the template for encoding trajectories."""
         response = http_post(
             url=f'{self.server_url}/set_template',
             json_data={'template_cls': template_cls, 'adapter_name': adapter_name, **kwargs}
         )
         response.raise_for_status()
-        return response.json()
+        return SetTemplateResponse(**response.json())
 '''
 
     # Write the sampler client file

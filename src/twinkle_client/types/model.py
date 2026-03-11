@@ -5,7 +5,7 @@ Pydantic request/response models for twinkle model management endpoints.
 These models are used by both the server-side handler and the twinkle client.
 """
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 
 class CreateRequest(BaseModel):
@@ -127,6 +127,115 @@ class CalculateMetricRequest(BaseModel):
 
 class GetStateDictRequest(BaseModel):
     adapter_name: str
+
+    class Config:
+        extra = 'allow'
+
+
+# ---------------------------------------------------------------------------
+# Response models
+# ---------------------------------------------------------------------------
+
+
+class ModelResult(BaseModel):
+    """Generic single-value result wrapper returned by most model endpoints."""
+    result: Any
+
+
+class ForwardResponse(ModelResult):
+    """Response for /forward and /forward_only endpoints."""
+    pass
+
+
+class ForwardBackwardResponse(ModelResult):
+    """Response for /forward_backward endpoint."""
+    pass
+
+
+class BackwardResponse(ModelResult):
+    """Response for /backward endpoint."""
+    pass
+
+
+class StepResponse(ModelResult):
+    """Response for /step (optimizer step) endpoint."""
+    pass
+
+
+class ZeroGradResponse(ModelResult):
+    """Response for /zero_grad endpoint."""
+    pass
+
+
+class LrStepResponse(ModelResult):
+    """Response for /lr_step endpoint."""
+    pass
+
+
+class SetLossResponse(ModelResult):
+    """Response for /set_loss endpoint."""
+    pass
+
+
+class ClipGradNormResponse(ModelResult):
+    """Response for /clip_grad_norm endpoint."""
+    pass
+
+
+class SetOptimizerResponse(ModelResult):
+    """Response for /set_optimizer endpoint."""
+    pass
+
+
+class SetLrSchedulerResponse(ModelResult):
+    """Response for /set_lr_scheduler endpoint."""
+    pass
+
+
+class SaveResponse(ModelResult):
+    """Response for /save endpoint."""
+    pass
+
+
+class LoadResponse(ModelResult):
+    """Response for /load endpoint."""
+    pass
+
+
+class SetTemplateResponse(ModelResult):
+    """Response for /set_template endpoint."""
+    pass
+
+
+class SetProcessorResponse(ModelResult):
+    """Response for /set_processor endpoint."""
+    pass
+
+
+class CalculateLossResponse(ModelResult):
+    """Response for /calculate_loss endpoint."""
+    pass
+
+
+class CalculateMetricResponse(ModelResult):
+    """Response for /calculate_metric endpoint."""
+    pass
+
+
+class GetTrainConfigsResponse(ModelResult):
+    """Response for /get_train_configs endpoint."""
+    pass
+
+
+class GetStateDictResponse(ModelResult):
+    """Response for /get_state_dict endpoint."""
+    pass
+
+
+class UploadToHubResponse(BaseModel):
+    """Response for /upload_to_hub endpoint."""
+    status: Optional[str] = None
+    message: Optional[str] = None
 
     class Config:
         extra = 'allow'

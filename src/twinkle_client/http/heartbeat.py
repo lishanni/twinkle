@@ -51,7 +51,7 @@ class HeartbeatManager:
 
     def processor_heartbeat_func(self, processor_id_list: str):
         response = http_post(
-            url=f'{get_base_url()}/processors/twinkle/heartbeat', json_data={'processor_id': processor_id_list})
+            url=f'{get_base_url()}/processor/twinkle/heartbeat', json_data={'processor_id': processor_id_list})
         response.raise_for_status()
 
     def register_processor(self, processor_id: str):

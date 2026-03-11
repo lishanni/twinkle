@@ -10,7 +10,7 @@
 # ============================================================================
 
 from typing import List, Literal, Optional, Union
-from twinkle_client.http import http_post, heartbeat_manager
+from twinkle_client.http import http_post
 from twinkle import DeviceMesh
 from twinkle.data_format import InputFeature
 
@@ -31,13 +31,6 @@ class InputProcessor(object):
         )
         response.raise_for_status()
         self.processor_id = response.json()['processor_id']
-        heartbeat_manager.register_processor(self.processor_id)
-
-    def __del__(self):
-        try:
-            heartbeat_manager.unregister_processor(self.processor_id)
-        except:
-            pass
 
     
     def __call__(self, inputs: Union[InputFeature, List[InputFeature]], **kwargs):

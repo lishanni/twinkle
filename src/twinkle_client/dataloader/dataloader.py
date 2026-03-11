@@ -10,7 +10,7 @@
 # ============================================================================
 
 from typing import Callable, Type, Union
-from twinkle_client.http import http_post, heartbeat_manager
+from twinkle_client.http import http_post
 from twinkle.dataset import Dataset
 from twinkle.processor import InputProcessor
 
@@ -31,13 +31,6 @@ class DataLoader(object):
         )
         response.raise_for_status()
         self.processor_id = response.json()['processor_id']
-        heartbeat_manager.register_processor(self.processor_id)
-
-    def __del__(self):
-        try:
-            heartbeat_manager.unregister_processor(self.processor_id)
-        except:
-            pass
 
     
     def __len__(self):

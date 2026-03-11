@@ -67,7 +67,7 @@ class ServiceProxy:
         headers.pop('host', None)
         headers.pop('content-length', None)
         request_id = request_headers.get('X-Ray-Serve-Request-Id')
-        if request_id is not None:
+        if request_id is not None and not request_headers.get('serve_multiplexed_model_id'):
             headers['serve_multiplexed_model_id'] = request_id
         return headers
 

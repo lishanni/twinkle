@@ -6,7 +6,7 @@ All endpoints are prefixed /twinkle/* and registered via _register_twinkle_route
 """
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
@@ -17,6 +17,8 @@ from twinkle.server.utils.checkpoint_base import validate_user_path
 from twinkle.server.utils.validation import get_token_from_request
 from twinkle.utils.logger import get_logger
 from twinkle_client.types.server import DeleteCheckpointResponse, HealthResponse, WeightsInfoRequest
+from twinkle_client.types.session import (CreateSessionRequest, CreateSessionResponse, SessionHeartbeatRequest,
+                                          SessionHeartbeatResponse)
 from twinkle_client.types.training import (CheckpointsListResponse, TrainingRun, TrainingRunsResponse,
                                            WeightsInfoResponse)
 
@@ -29,6 +31,26 @@ def _register_twinkle_routes(app: FastAPI, self_fn: Callable[[], GatewayServer])
     @app.get('/twinkle/healthz', response_model=HealthResponse)
     async def healthz(request: Request) -> HealthResponse:
         return HealthResponse(status='ok')
+
+    @app.post('/twinkle/create_session', response_model=CreateSessionResponse)
+    async def create_session(
+            request: Request,
+            body: CreateSessionRequest,
+            self: GatewayServer = Depends(self_fn),
+    ) -> CreateSessionResponse:
+        session_id = self.state.create_session(body.model_dump())
+        return CreateSessionResponse(session_id=session_id)
+
+    @app.post('/twinkle/session_heartbeat', response_model=SessionHeartbeatResponse)
+    async def session_heartbeat(
+            request: Request,
+            body: SessionHeartbeatRequest,
+            self: GatewayServer = Depends(self_fn),
+    ) -> SessionHeartbeatResponse:
+        alive = self.state.touch_session(body.session_id)
+        if not alive:
+            raise HTTPException(status_code=404, detail='Unknown session')
+        return SessionHeartbeatResponse()
 
     @app.get('/twinkle/training_runs', response_model=TrainingRunsResponse)
     async def get_training_runs(request: Request, limit: int = 20, offset: int = 0) -> TrainingRunsResponse:

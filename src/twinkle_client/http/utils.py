@@ -10,6 +10,7 @@ TWINKLE_SERVER_TOKEN = os.environ.get('TWINKLE_SERVER_TOKEN', 'EMPTY_TOKEN')
 # Context variables for flexible configuration
 _base_url_context: ContextVar[Optional[str]] = ContextVar('base_url', default=None)
 _api_key_context: ContextVar[Optional[str]] = ContextVar('api_key', default=None)
+_session_id_context: ContextVar[Optional[str]] = ContextVar('session_id', default=None)
 
 # Global static request ID shared across all threads
 # This ensures heartbeat threads use the same request ID as the main training thread
@@ -48,6 +49,21 @@ def get_api_key() -> str:
 def clear_api_key():
     """Clear the API key context, falling back to environment variable."""
     _api_key_context.set(None)
+
+
+def set_session_id(session_id: str):
+    """Set the session ID for the current context."""
+    _session_id_context.set(session_id)
+
+
+def get_session_id() -> Optional[str]:
+    """Get the current session ID from context."""
+    return _session_id_context.get()
+
+
+def clear_session_id():
+    """Clear the session ID context."""
+    _session_id_context.set(None)
 
 
 def set_request_id(request_id: str):
