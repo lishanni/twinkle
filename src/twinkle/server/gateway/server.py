@@ -42,14 +42,21 @@ def build_server_app(deploy_options: dict[str, Any],
     Returns:
         Configured Ray Serve deployment bound with options
     """
-    app = FastAPI()
 
-    @app.middleware('http')
-    async def verify_token(request: Request, call_next):
-        return await verify_request_token(request=request, call_next=call_next)
+    def gateway_app():
+        """Called once per replica at init time to build a fresh FastAPI app."""
+        from ray import serve
+        app = FastAPI()
 
-    @serve.deployment(name='GatewayServer')
-    @serve.ingress(app)
+        @app.middleware('http')
+        async def verify_token(request: Request, call_next):
+            return await verify_request_token(request=request, call_next=call_next)
+
+        self_fn = lambda: serve.get_replica_context().servable_object  # noqa: E731
+        TinkerGatewayHandlers._register_tinker_routes(app, self_fn)
+        TwinkleGatewayHandlers._register_twinkle_routes(app, self_fn)
+        return app
+
     class GatewayServer(TinkerGatewayHandlers, TwinkleGatewayHandlers):
         """Unified gateway server handling both Tinker and Twinkle API clients."""
 
@@ -94,9 +101,7 @@ def build_server_app(deploy_options: dict[str, Any],
                 return metadata['base_model']
             raise HTTPException(status_code=404, detail=f'Model {model_id} not found')
 
-    # Register routes from both handler mixins
-    TinkerGatewayHandlers._register_tinker_routes(app)
-    TwinkleGatewayHandlers._register_twinkle_routes(app)
-
-    return GatewayServer.options(**deploy_options).bind(
+    GatewayServerWithIngress = serve.ingress(gateway_app)(GatewayServer)
+    DeploymentClass = serve.deployment(name='GatewayServer')(GatewayServerWithIngress)
+    return DeploymentClass.options(**deploy_options).bind(
         supported_models=supported_models, server_config=server_config, http_options=http_options, **kwargs)

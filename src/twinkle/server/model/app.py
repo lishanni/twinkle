@@ -58,6 +58,10 @@ def build_model_app(model_id: str,
     async def verify_token(request: Request, call_next):
         return await verify_request_token(request=request, call_next=call_next)
 
+    # Register routes BEFORE @serve.ingress so Ray Serve captures them at decoration time
+    TinkerModelHandlers._register_tinker_routes(app, model_id)
+    TwinkleModelHandlers._register_twinkle_routes(app, model_id)
+
     @serve.deployment(
         name='ModelManagement',
         request_router_config=RequestRouterConfig(request_router_class=StickyLoraRequestRouter),
@@ -145,10 +149,6 @@ def build_model_app(model_id: str,
         def _on_adapter_expired(self, adapter_name: str) -> None:
             self.fail_pending_tasks_for_model(adapter_name, reason='Adapter expired')
             self._cleanup_adapter(adapter_name)
-
-    # Register routes from both handler mixins
-    TinkerModelHandlers._register_tinker_routes(app, model_id)
-    TwinkleModelHandlers._register_twinkle_routes(app, model_id)
 
     return ModelManagement.options(**deploy_options).bind(nproc_per_node, device_group, device_mesh, use_megatron,
                                                           queue_config, **kwargs)

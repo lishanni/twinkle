@@ -62,6 +62,10 @@ def build_sampler_app(model_id: str,
     async def verify_token(request: Request, call_next):
         return await verify_request_token(request=request, call_next=call_next)
 
+    # Register routes BEFORE @serve.ingress so Ray Serve captures them at decoration time
+    TinkerSamplerHandlers._register_tinker_sampler_routes(app)
+    TwinkleSamplerHandlers._register_twinkle_sampler_routes(app)
+
     @serve.deployment(name='SamplerManagement')
     @serve.ingress(app)
     class SamplerManagement(TaskQueueMixin, AdapterManagerMixin):
@@ -147,10 +151,6 @@ def build_sampler_app(model_id: str,
                 logger.info(f'Removed expired adapter {adapter_name}')
             except Exception as e:
                 logger.warning(f'Failed to remove expired adapter {adapter_name}: {e}')
-
-    # Register routes from both handler mixins
-    TinkerSamplerHandlers._register_tinker_sampler_routes(app)
-    TwinkleSamplerHandlers._register_twinkle_sampler_routes(app)
 
     return SamplerManagement.options(**deploy_options).bind(nproc_per_node, device_group, device_mesh, sampler_type,
                                                             engine_args, adapter_config, queue_config, **kwargs)

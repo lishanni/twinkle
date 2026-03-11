@@ -11,7 +11,6 @@ from tinker import types
 from typing import Any
 
 from twinkle.server.common.io_utils import create_checkpoint_manager, create_training_run_manager
-from twinkle.server.utils.validation import get_token_from_request
 from twinkle.utils.logger import get_logger
 
 logger = get_logger()
