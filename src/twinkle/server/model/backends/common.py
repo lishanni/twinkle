@@ -84,7 +84,7 @@ def clean_metrics(metrics: dict) -> dict:
             s = value.strip()
             if s:
                 try:
-                    head, unit = s.split()
+                    head, unit = s.split(maxsplit=1)
                     cleaned[f'{key}/{unit}'] = float(head)
                 except Exception:
                     m = re.match(r'^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)', s)
@@ -104,7 +104,12 @@ class TwinkleCompatModelBase:
     def _get_forward_output(inputs: List[types.Datum], logits: torch.Tensor, logps: torch.Tensor) -> List[dict]:
         """Convert raw logits to the expected output format with logprobs and elementwise_loss."""
         from twinkle.utils.torch_utils import selective_log_softmax
-        device = logits.device if logits is not None else logps.device
+        if logps is not None:
+            device = logps.device
+        elif logits is not None:
+            device = logits.device
+        else:
+            raise ValueError('At least one of logits or logps must be provided.')
         results = []
         if logits is None:
             logits = [None] * len(inputs)
@@ -115,7 +120,7 @@ class TwinkleCompatModelBase:
             seq_len = labels.numel()
 
             if logps is None:
-                assert logits is not None
+                assert logit is not None, 'logit must not be None when logps is None'
                 feature_logits = logit[:seq_len, :]
                 token_log_probs = selective_log_softmax(feature_logits, labels)
             else:

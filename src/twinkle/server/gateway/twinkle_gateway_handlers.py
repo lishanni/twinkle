@@ -7,10 +7,11 @@ All endpoints are prefixed /twinkle/* and registered via _register_twinkle_route
 from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Request
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
     from twinkle.server.utils.state.server_state import ServerStateProxy
+    from .server import GatewayServer
 
 from twinkle.server.common.io_utils import create_checkpoint_manager, create_training_run_manager, validate_user_path
 from twinkle.server.utils.validation import get_token_from_request
@@ -22,7 +23,7 @@ from twinkle_client.types.training import (CheckpointsListResponse, TrainingRun,
 logger = get_logger()
 
 
-def _register_twinkle_routes(app: FastAPI, self_fn) -> None:
+def _register_twinkle_routes(app: FastAPI, self_fn: Callable[[], GatewayServer]) -> None:
     """Register all /twinkle/* routes on the given FastAPI app."""
 
     @app.get('/twinkle/healthz', response_model=HealthResponse)
