@@ -274,7 +274,7 @@ def generate_processors():
             code = f'''
     def {name}(self{sig_part}):
         response = http_post(
-            url=f'{{self.server_url}}/processors/call',
+            url=f'{{self.server_url}}/call',
             json_data={{
                 'processor_id': self.processor_id,
                 'function': '{name}',
@@ -288,7 +288,7 @@ def generate_processors():
                 code += '''
     def __next__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__next__',
@@ -346,10 +346,10 @@ class {class_name}({inheritance}):
 
     def __init__({init_params}):
         from twinkle_client.http import get_base_url
-        self.server_url = get_base_url()
 
+        self.server_url = f'{{get_base_url()}}/processors/twinkle'
         response = http_post(
-            url=f'{{self.server_url}}/processors/create',
+            url=f'{{self.server_url}}/create',
             json_data={{
                 'processor_type': '{processor_type}',
                 'class_type': '{class_name}',
@@ -466,7 +466,7 @@ class MultiLoraTransformersModel:
         self.model_id = model_id
         if '://' in model_id:
             model_id = model_id.split('://')[1]
-        self.server_url = f'{self.server_url}/models/{model_id}'
+        self.server_url = f'{self.server_url}/models/{model_id}/twinkle'
         self.adapter_name = None
         response = http_post(
             url=f'{self.server_url}/create',
@@ -743,7 +743,7 @@ class vLLMSampler(Sampler):
         self.adapter_name = None
         if '://' in model_id:
             model_id = model_id.split('://')[1]
-        self.server_url = f'{self.server_url}/samplers/{model_id}'
+        self.server_url = f'{self.server_url}/samplers/{model_id}/twinkle'
         response = http_post(
             url=f'{self.server_url}/create',
             json_data=kwargs

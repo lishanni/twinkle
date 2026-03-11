@@ -21,10 +21,10 @@ class IterablePackingDataset(IterableDataset):
 
     def __init__(self, dataset_meta: DatasetMeta, packing_interval: int = 128, packing_num_proc: int = 1, cyclic: bool = False, **kwargs):
         from twinkle_client.http import get_base_url
-        self.server_url = get_base_url()
 
+        self.server_url = f'{get_base_url()}/processors/twinkle'
         response = http_post(
-            url=f'{self.server_url}/processors/create',
+            url=f'{self.server_url}/create',
             json_data={
                 'processor_type': 'dataset',
                 'class_type': 'IterablePackingDataset',
@@ -44,7 +44,7 @@ class IterablePackingDataset(IterableDataset):
     
     def set_template(self, template_cls: Union[Type[Template], str, Template], **kwargs):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': 'set_template',
@@ -58,7 +58,7 @@ class IterablePackingDataset(IterableDataset):
 
     def pack_dataset(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': 'pack_dataset',
@@ -71,7 +71,7 @@ class IterablePackingDataset(IterableDataset):
 
     def __iter__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__iter__',
@@ -83,7 +83,7 @@ class IterablePackingDataset(IterableDataset):
     
     def __next__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__next__',

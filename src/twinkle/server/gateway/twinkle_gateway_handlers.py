@@ -10,7 +10,6 @@ from fastapi import FastAPI, HTTPException, Request
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
-    from twinkle.server.utils.state.server_state import ServerStateProxy
     from .server import GatewayServer
 
 from twinkle.server.common.io_utils import create_checkpoint_manager, create_training_run_manager, validate_user_path

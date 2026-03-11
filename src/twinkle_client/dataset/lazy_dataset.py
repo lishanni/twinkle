@@ -19,10 +19,10 @@ class LazyDataset(Dataset):
 
     def __init__(self, dataset_meta: DatasetMeta, **kwargs):
         from twinkle_client.http import get_base_url
-        self.server_url = get_base_url()
 
+        self.server_url = f'{get_base_url()}/processors/twinkle'
         response = http_post(
-            url=f'{self.server_url}/processors/create',
+            url=f'{self.server_url}/create',
             json_data={
                 'processor_type': 'dataset',
                 'class_type': 'LazyDataset',
@@ -42,7 +42,7 @@ class LazyDataset(Dataset):
     
     def encode(self, **kwargs):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': 'encode',
@@ -56,7 +56,7 @@ class LazyDataset(Dataset):
 
     def check(self, **kwargs):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': 'check',
@@ -70,7 +70,7 @@ class LazyDataset(Dataset):
 
     def __getitem__(self, idx):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__getitem__',
@@ -83,7 +83,7 @@ class LazyDataset(Dataset):
 
     def __len__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__len__',

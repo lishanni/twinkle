@@ -19,10 +19,10 @@ class DataLoader(object):
 
     def __init__(self, dataset: Union[Dataset, Callable], **kwargs):
         from twinkle_client.http import get_base_url
-        self.server_url = get_base_url()
 
+        self.server_url = f'{get_base_url()}/processors/twinkle'
         response = http_post(
-            url=f'{self.server_url}/processors/create',
+            url=f'{self.server_url}/create',
             json_data={
                 'processor_type': 'dataloader',
                 'class_type': 'DataLoader',
@@ -42,7 +42,7 @@ class DataLoader(object):
     
     def __len__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__len__',
@@ -55,7 +55,7 @@ class DataLoader(object):
 
     def set_processor(self, processor_cls: Union[Type[InputProcessor], str, InputProcessor, Callable], **kwargs):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': 'set_processor',
@@ -69,7 +69,7 @@ class DataLoader(object):
 
     def __iter__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__iter__',
@@ -81,7 +81,7 @@ class DataLoader(object):
     
     def __next__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__next__',

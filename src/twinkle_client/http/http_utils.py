@@ -1,5 +1,4 @@
 import requests
-from numbers import Number
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from .utils import get_api_key, get_base_url, get_request_id

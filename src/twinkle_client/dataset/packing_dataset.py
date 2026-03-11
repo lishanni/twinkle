@@ -19,10 +19,10 @@ class PackingDataset(Dataset):
 
     def __init__(self, dataset_meta: DatasetMeta, packing_num_proc: int = 1, **kwargs):
         from twinkle_client.http import get_base_url
-        self.server_url = get_base_url()
 
+        self.server_url = f'{get_base_url()}/processors/twinkle'
         response = http_post(
-            url=f'{self.server_url}/processors/create',
+            url=f'{self.server_url}/create',
             json_data={
                 'processor_type': 'dataset',
                 'class_type': 'PackingDataset',
@@ -42,7 +42,7 @@ class PackingDataset(Dataset):
     
     def pack_dataset(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': 'pack_dataset',
@@ -55,7 +55,7 @@ class PackingDataset(Dataset):
 
     def __getitem__(self, index):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__getitem__',
@@ -68,7 +68,7 @@ class PackingDataset(Dataset):
 
     def __len__(self):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__len__',

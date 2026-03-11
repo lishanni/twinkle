@@ -19,10 +19,10 @@ class InputProcessor(object):
 
     def __init__(self, device_mesh: Optional[DeviceMesh] = None, padding_free: bool = False, framework: Literal['transformers', 'megatron'] = 'transformers', **kwargs):
         from twinkle_client.http import get_base_url
-        self.server_url = get_base_url()
 
+        self.server_url = f'{get_base_url()}/processors/twinkle'
         response = http_post(
-            url=f'{self.server_url}/processors/create',
+            url=f'{self.server_url}/create',
             json_data={
                 'processor_type': 'processor',
                 'class_type': 'InputProcessor',
@@ -42,7 +42,7 @@ class InputProcessor(object):
     
     def __call__(self, inputs: Union[InputFeature, List[InputFeature]], **kwargs):
         response = http_post(
-            url=f'{self.server_url}/processors/call',
+            url=f'{self.server_url}/call',
             json_data={
                 'processor_id': self.processor_id,
                 'function': '__call__',

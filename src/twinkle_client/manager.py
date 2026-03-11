@@ -31,10 +31,10 @@ class TwinkleClient:
         base_url: Base URL of the Twinkle server (e.g., "http://localhost:8000").
         api_key: API key for authentication. If not provided, uses
                  TWINKLE_SERVER_TOKEN environment variable
-        route_prefix: API route prefix (default: "/server")
+        route_prefix: API route prefix (default: "/api/v1/twinkle")
     """
 
-    def __init__(self, base_url: str = None, api_key: str = None, route_prefix: str | None = '/server'):
+    def __init__(self, base_url: str = None, api_key: str = None, route_prefix: str | None = '/api/v1/twinkle'):
         self.base_url = base_url
         self.api_key = api_key
         self.route_prefix = route_prefix.rstrip('/') if route_prefix else ''

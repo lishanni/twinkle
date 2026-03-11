@@ -108,7 +108,7 @@ def build_processor_app(nproc_per_node: int, ncpu_proc_per_node: int, device_gro
                 if cur_count <= 0:
                     self.state.pop_config(user_key)
 
-        @app.post('/create')
+        @app.post('/twinkle/create')
         def create(self, request: Request, body: ProcessorCreateRequest):
             processor_type_name = body.processor_type
             class_type = body.class_type
@@ -142,7 +142,7 @@ def build_processor_app(nproc_per_node: int, ncpu_proc_per_node: int, device_gro
             self.resource_records[processor_id] = 0
             return {'processor_id': 'pid:' + processor_id}
 
-        @app.post('/heartbeat')
+        @app.post('/twinkle/heartbeat')
         def heartbeat(self, body: ProcessorHeartbeatRequest):
             processor_ids = body.processor_id.split(',')
             for _id in processor_ids:
@@ -150,7 +150,7 @@ def build_processor_app(nproc_per_node: int, ncpu_proc_per_node: int, device_gro
                     self.resource_records[_id] = 0
             return {'status': 'ok'}
 
-        @app.post('/call')
+        @app.post('/twinkle/call')
         def call(self, body: ProcessorCallRequest):
             processor_id = body.processor_id
             function_name = body.function
