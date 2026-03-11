@@ -17,8 +17,8 @@ from twinkle.server.utils.state import get_server_state
 from twinkle.server.utils.validation import verify_request_token
 from twinkle.utils.logger import get_logger
 from .proxy import ServiceProxy
-from .tinker_gateway_handlers import TinkerGatewayHandlers
-from .twinkle_gateway_handlers import TwinkleGatewayHandlers
+from .tinker_gateway_handlers import _register_tinker_routes
+from .twinkle_gateway_handlers import _register_twinkle_routes
 
 logger = get_logger()
 
@@ -43,21 +43,21 @@ def build_server_app(deploy_options: dict[str, Any],
         Configured Ray Serve deployment bound with options
     """
 
-    def gateway_app():
-        """Called once per replica at init time to build a fresh FastAPI app."""
-        from ray import serve
-        app = FastAPI()
+    # Build the FastAPI app and register all routes BEFORE serve.ingress so that
+    # the frozen app contains the complete route table (visible to ProxyActor).
+    app = FastAPI()
 
-        @app.middleware('http')
-        async def verify_token(request: Request, call_next):
-            return await verify_request_token(request=request, call_next=call_next)
+    @app.middleware('http')
+    async def verify_token(request: Request, call_next):
+        return await verify_request_token(request=request, call_next=call_next)
 
-        self_fn = lambda: serve.get_replica_context().servable_object  # noqa: E731
-        TinkerGatewayHandlers._register_tinker_routes(app, self_fn)
-        TwinkleGatewayHandlers._register_twinkle_routes(app, self_fn)
-        return app
+    def get_gw():
+        return serve.get_replica_context().servable_object
 
-    class GatewayServer(TinkerGatewayHandlers, TwinkleGatewayHandlers):
+    _register_tinker_routes(app, get_gw)
+    _register_twinkle_routes(app, get_gw)
+
+    class GatewayServer:
         """Unified gateway server handling both Tinker and Twinkle API clients."""
 
         def __init__(self,
@@ -101,7 +101,7 @@ def build_server_app(deploy_options: dict[str, Any],
                 return metadata['base_model']
             raise HTTPException(status_code=404, detail=f'Model {model_id} not found')
 
-    GatewayServerWithIngress = serve.ingress(gateway_app)(GatewayServer)
+    GatewayServerWithIngress = serve.ingress(app)(GatewayServer)
     DeploymentClass = serve.deployment(name='GatewayServer')(GatewayServerWithIngress)
     return DeploymentClass.options(**deploy_options).bind(
         supported_models=supported_models, server_config=server_config, http_options=http_options, **kwargs)
