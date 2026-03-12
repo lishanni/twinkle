@@ -57,6 +57,7 @@ from .sampler import (
     AddAdapterRequest as SamplerAddAdapterRequest,
     AddAdapterResponse,
     CreateResponse as SamplerCreateResponse,
+    SampledSequenceModel,
     SampleRequest,
     SampleResponseModel,
     SetTemplateRequest as SamplerSetTemplateRequest,

@@ -7,17 +7,37 @@ Provides /twinkle/* sampler endpoints that call the sampler directly (no queue n
 from __future__ import annotations
 
 import traceback
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from typing import TYPE_CHECKING, Callable, Optional
 
 if TYPE_CHECKING:
     from .app import SamplerManagement
+
+import numpy as np
 
 import twinkle_client.types as types
 from twinkle.data_format import InputFeature, SamplingParams, Trajectory
 from twinkle.utils.logger import get_logger
 
 logger = get_logger()
+
+
+def _serialize_input_feature(feature: dict) -> dict:
+    """Convert numpy arrays / torch tensors in an InputFeature to plain Python lists."""
+    result = {}
+    for k, v in feature.items():
+        if isinstance(v, np.ndarray):
+            result[k] = v.tolist()
+        else:
+            try:
+                import torch
+                if isinstance(v, torch.Tensor):
+                    result[k] = v.tolist()
+                    continue
+            except ImportError:
+                pass
+            result[k] = v
+    return result
 
 
 def _get_twinkle_sampler_adapter_name(request: Request, adapter_name: str | None) -> str | None:
@@ -89,13 +109,16 @@ def _register_twinkle_sampler_routes(app: FastAPI, self_fn: Callable[[], Sampler
             if callable(response):
                 response = response()
 
-            sequences = []
-            for seq in response.sequences:
-                sequences.append({
-                    'stop_reason': seq.stop_reason,
-                    'tokens': list(seq.tokens),
-                    'logprobs': list(seq.logprobs) if seq.logprobs is not None else None,
-                })
+            sequences = [
+                types.SampledSequenceModel(
+                    stop_reason=seq.stop_reason,
+                    tokens=list(seq.tokens),
+                    logprobs=list(seq.logprobs) if seq.logprobs is not None else None,
+                    decoded=seq.decoded,
+                    new_input_feature=_serialize_input_feature(seq.new_input_feature)
+                    if seq.new_input_feature is not None else None,
+                ) for seq in response.sequences
+            ]
 
             return types.SampleResponseModel(
                 sequences=sequences,
@@ -104,7 +127,7 @@ def _register_twinkle_sampler_routes(app: FastAPI, self_fn: Callable[[], Sampler
             )
         except Exception:
             logger.error(traceback.format_exc())
-            raise
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
 
     @app.post('/twinkle/set_template', response_model=types.SetTemplateResponse)
     def set_template(

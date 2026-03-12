@@ -7,8 +7,6 @@ Sessions are tracked via session ID; processors expire when their session expire
 """
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -59,7 +57,6 @@ class ProcessorManagerMixin:
 
         self._processor_countdown_thread: threading.Thread | None = None
         self._processor_countdown_running = False
-        self._processor_event_loop: asyncio.AbstractEventLoop | None = None
 
     def register_processor(self, processor_id: str, token: str, session_id: str) -> None:
         """Register a new processor for lifecycle tracking.
@@ -124,11 +121,11 @@ class ProcessorManagerMixin:
         """
         raise NotImplementedError(f'_on_processor_expired must be implemented by {self.__class__.__name__}')
 
-    async def _is_session_alive(self, session_id: str) -> bool:
+    def _is_session_alive(self, session_id: str) -> bool:
         """Check if a session is still alive via state proxy."""
         if not session_id:
             return True
-        last_heartbeat = await self.state.get_session_last_heartbeat(session_id)
+        last_heartbeat = self.state.get_session_last_heartbeat(session_id)
         if last_heartbeat is None:
             return False
         return (time.time() - last_heartbeat) < self._processor_timeout
@@ -145,18 +142,11 @@ class ProcessorManagerMixin:
                     if info.get('expiring'):
                         continue
                     session_id = info.get('session_id')
-                    if self._processor_event_loop is not None and self._processor_event_loop.is_running():
-                        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-                            self._is_session_alive(session_id), self._processor_event_loop)
-                        try:
-                            session_alive = future.result(timeout=5.0)
-                        except Exception as e:
-                            logger.warning(f'[ProcessorManager] Failed to check session liveness '
-                                           f'for {processor_id}: {type(e).__name__}: {e}')
-                            continue
-                    else:
-                        logger.warning(f'[ProcessorManager] No event loop available to check '
-                                       f'session {session_id}, skipping')
+                    try:
+                        session_alive = self._is_session_alive(session_id)
+                    except Exception as e:
+                        logger.warning(f'[ProcessorManager] Failed to check session liveness '
+                                       f'for {processor_id}: {type(e).__name__}: {e}')
                         continue
 
                     logger.debug(f'[ProcessorManager] Processor {processor_id} session check '
@@ -192,10 +182,6 @@ class ProcessorManagerMixin:
         """Start the background countdown thread. Safe to call multiple times."""
         if not self._processor_countdown_running:
             self._processor_countdown_running = True
-            try:
-                self._processor_event_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._processor_event_loop = None
             self._processor_countdown_thread = threading.Thread(target=self._processor_countdown_loop, daemon=True)
             self._processor_countdown_thread.start()
             logger.debug('[ProcessorManager] Countdown thread started')

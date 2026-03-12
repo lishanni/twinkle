@@ -29,14 +29,13 @@ MODEL_ID = 'Qwen/Qwen3.5-4B'
 # or None to use the base model
 # ADAPTER_URI = None
 # Example:
-ADAPTER_URI = 'twinkle://20260208_224851-fa3cdd11-default/weights/twinkle-epoch-2'
-
+ADAPTER_URI = 'twinkle://20260301_142318-Qwen_Qwen3-4B-199d2cdb/weights/twinkle-lora-0'
 
 def sample():
     # Step 2: Initialize the Twinkle client to communicate with the remote server.
     client = init_twinkle_client(
         base_url='http://127.0.0.1:8000',
-        api_key=os.environ.get('MODELSCOPE_TOKEN'),
+        api_key='EMPTY_API_KEY',
     )
 
     # Step 3: Create the sampler client pointing to the model on the server
@@ -84,11 +83,11 @@ def sample():
     # Step 8: Decode and print the results
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, trust_remote_code=True)
 
-    logger.info(f"Generated {len(response['sequences'])} sequences "
+    logger.info(f'Generated {len(response.sequences)} sequences '
                 f'({num_prompts} prompts x {num_samples} samples)')
 
-    for i, seq in enumerate(response['sequences']):
-        text = tokenizer.decode(seq['tokens'], skip_special_tokens=True)
+    for i, seq in enumerate(response.sequences):
+        text = tokenizer.decode(seq.tokens, skip_special_tokens=True)
         logger.info(f'Sequence {i}:\n  {text}\n')
 
 

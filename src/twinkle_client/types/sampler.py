@@ -5,7 +5,9 @@ Pydantic request/response models for twinkle sampler endpoints.
 These models are used by both the server-side handler and the twinkle client.
 """
 from pydantic import BaseModel, Field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Tuple
+
+StopReason = Literal['length', 'stop']
 
 
 class SampleRequest(BaseModel):
@@ -19,12 +21,22 @@ class SampleRequest(BaseModel):
     num_samples: int = Field(1, description='Number of completions to generate per prompt')
 
 
+class SampledSequenceModel(BaseModel):
+    """A single sampled sequence, mirroring twinkle.data_format.SampledSequence."""
+    stop_reason: StopReason = Field(..., description="Stop reason: 'length' or 'stop'")
+    tokens: List[int] = Field(..., description='Token IDs of the sampled sequence')
+    logprobs: Optional[List[float]] = Field(None, description='Per-token log-probabilities')
+    decoded: Optional[str] = Field(None, description='Decoded text of the sampled sequence')
+    new_input_feature: Optional[Dict[str, Any]] = Field(
+        None, description='Updated InputFeature after sampling (input_ids, labels, etc.)')
+
+
 class SampleResponseModel(BaseModel):
-    """Response body for the /sample endpoint."""
-    sequences: List[Dict[str, Any]] = Field(
-        ..., description='List of sampled sequences, each with tokens, logprobs, stop_reason')
+    """Response body for the /sample endpoint, mirroring twinkle.data_format.SampleResponse."""
+    sequences: List[SampledSequenceModel] = Field(
+        ..., description='List of sampled sequences')
     prompt_logprobs: Optional[List[Optional[float]]] = None
-    topk_prompt_logprobs: Optional[List[Optional[List]]] = None
+    topk_prompt_logprobs: Optional[List[Optional[List[Tuple[int, float]]]]] = None
 
 
 class SetTemplateRequest(BaseModel):

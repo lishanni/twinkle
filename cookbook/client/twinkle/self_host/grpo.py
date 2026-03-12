@@ -22,16 +22,14 @@
 import dotenv
 
 dotenv.load_dotenv('.env')
-import re
 
-from twinkle.data_format import Trajectory
-from twinkle.reward.base import Reward
 import gc
 import os
 from peft import LoraConfig
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 from twinkle import get_logger
+from twinkle.reward import GSM8KAccuracyReward, GSM8KFormatReward
 from twinkle.advantage import GRPOAdvantage
 from twinkle.dataset import DatasetMeta
 from twinkle.metric import CompletionRewardMetric
@@ -40,6 +38,7 @@ from twinkle_client.dataloader import DataLoader
 from twinkle_client.dataset import Dataset
 from twinkle_client.model import MultiLoraTransformersModel
 from twinkle_client.sampler import vLLMSampler
+from twinkle.preprocessor.llm import GSM8KProcessor
 
 logger = get_logger()
 
@@ -55,62 +54,22 @@ SYNC_INTERVAL = 1  # Save weights for sampler every N steps
 GRADIENT_ACCUMULATION_STEPS = 4
 
 
-def create_countdown_dataset():
-    """Create Countdown Game dataset for GRPO training."""
-
-    dataset = Dataset(dataset_meta=DatasetMeta('ms://zouxuhong/Countdown-Tasks-3to4', data_slice=range(500)))
-    dataset.set_template('Template', model_id=MODEL_ID, max_length=8192)
-    dataset.map('CountdownProcessor')
-    dataset.encode(add_generation_prompt=True, batched=True)
+def create_gsm8k_dataset():
+    dataset = Dataset(DatasetMeta('ms://modelscope/gsm8k', subset_name='main', split='train'))
+    dataset.set_template('Template', model_id=MODEL_ID, max_length=2048)
+    dataset.map('GSM8KProcessor')
+    dataset.encode(add_generation_prompt=True)
     return dataset
 
+def compute_rewards(
+    trajectories: List[Dict[str, Any]],
+) -> Tuple[List[float], List[float], List[float]]:
+    accuracy_reward_fn = GSM8KAccuracyReward()
+    format_reward_fn = GSM8KFormatReward()
 
-class CountDownAccuracy(Reward):
-
-    @staticmethod
-    def countdown_accuracy_reward(completion: str, target: int, nums: List[int]) -> float:
-        """Accuracy reward: checks if equation is correct."""
-        try:
-            match = re.search(r'<answer>(.*?)<\/answer>', completion)
-            if match is None:
-                return 0.0
-            equation = match.group(1).strip()
-            if '=' in equation:
-                equation = equation.split('=')[0]
-            used_numbers = [int(n) for n in re.findall(r'\d+', equation)]
-            if sorted(used_numbers) != sorted(nums):
-                return 0.0
-            if not re.match(r'^[\d+\-*/().\s]+$', equation):
-                return 0.0
-            result = eval(equation, {'__builtins__': None}, {})
-            return 1.0 if abs(float(result) - float(target)) < 1e-5 else 0.0
-        except Exception:  # noqa
-            return 0.0
-
-    def __call__(self, trajectories: List[Trajectory], ground_truths: List[Trajectory]):
-        rewards = []
-        for trajectory in trajectories:
-            messages = trajectory.get('messages', [])
-            completion = ''
-            for msg in reversed(messages):
-                if msg.get('role') == 'assistant':
-                    completion = msg.get('content', '')
-                    break
-            user_data = trajectory.get('user_data', [{}])
-            data = user_data[0] if isinstance(user_data, list) and user_data else {}
-            target = data.get('target', 0)
-            nums = data.get('nums', [])
-            acc_reward = self.countdown_accuracy_reward(completion, target, nums)
-            rewards.append(acc_reward)
-        return rewards
-
-
-def compute_rewards(trajectories: List[dict], ) -> Tuple[List[float], List[float], List[float]]:
-    """Compute format and accuracy rewards for Countdown game."""
-    from twinkle.reward import FormatReward
-    format_rewards = FormatReward()(trajectories, [])
-    accuracy_rewards = CountDownAccuracy()(trajectories, [])
-    total_rewards = [a + b for a, b in zip(accuracy_rewards, format_rewards)]
+    accuracy_rewards = accuracy_reward_fn(trajectories)
+    format_rewards = format_reward_fn(trajectories)
+    total_rewards = [a + f for a, f in zip(accuracy_rewards, format_rewards)]
     return total_rewards, format_rewards, accuracy_rewards
 
 
@@ -122,7 +81,7 @@ def train():
     )
 
     # Step 2: Prepare dataset and dataloader
-    dataset = create_countdown_dataset()
+    dataset = create_gsm8k_dataset()
     dataloader = DataLoader(dataset=dataset, batch_size=BATCH_SIZE)
 
     # Step 3: Configure the training model
@@ -185,11 +144,11 @@ def train():
         # the resulting path to the sampler as adapter_uri
         if step % SYNC_INTERVAL == 0:
             logger.info(f'Step {step}: Saving weights for sampler...')
-            twinkle_path = model.save(
+            result = model.save(
                 name=f'grpo-sampler-step-{step}',
                 save_optimizer=False,
             )
-            current_adapter_uri = twinkle_path
+            current_adapter_uri = result.twinkle_path
             logger.info(f'Step {step}: Saved weights to {current_adapter_uri}')
 
         # ========== 2. Sample completions ==========
@@ -200,32 +159,29 @@ def train():
             num_samples=NUM_GENERATIONS,
         )
 
-        input_features = []
-        old_logps_list = []
-        completion_lengths = []
+        all_input_data: List[Dict[str, Any]] = []
+        all_old_logps: List[List[float]] = []
+        all_completion_lengths: List[int] = []
 
-        sequences = sample_response.get('sequences', [])
-        for seq in sequences:
-            input_features.append(seq.get('new_input_feature', seq))
-            old_logps_list.append(seq.get('logprobs', []))
-            completion_lengths.append(len(seq.get('tokens', [])))
-
-        if not input_features:
-            logger.warning(f'Step {step}: No valid samples, skipping')
-            step += 1
-            continue
+        for sequence in sample_response.sequences:
+            all_input_data.append(sequence.new_input_feature)
+            all_old_logps.append(sequence.logprobs)
+            all_completion_lengths.append(len(sequence.tokens))
 
         # ========== 3. Compute rewards ==========
-        total_rewards, format_rewards, accuracy_rewards = compute_rewards(input_features)
+
+        total_rewards, format_rewards, accuracy_rewards = compute_rewards(
+            all_input_data
+        )
         metrics.accumulate(
-            None,
-            None,
-            completion_lengths=completion_lengths,
+            completion_lengths=all_completion_lengths,
             rewards={
                 'total': total_rewards,
                 'format': format_rewards,
                 'accuracy': accuracy_rewards,
-            })
+            },
+        )
+
 
         # ========== 4. Compute advantages ==========
         advantages = advantage_fn(
@@ -244,29 +200,27 @@ def train():
         # forward_backward with GRPO loss: passes advantages and old_logps
         # to the server-side GRPOLoss for proper policy optimization
         model.forward_backward(
-            inputs=input_features,
+            inputs=all_input_data,
             advantages=advantages,
-            old_logps=old_logps_list,
+            old_logps=all_old_logps,
         )
 
         # Gradient clipping and optimizer step
-        model.clip_grad_norm(1.0)
-        model.step()
-        model.zero_grad()
-        model.lr_step()
+        model.clip_grad_and_step()
 
         gc.collect()
 
         # ========== 6. Log ==========
         log_dict = metrics.calculate()
-        log_dict.update(model.calculate_metric())
+        log_dict.update(model.calculate_metric(is_training=True).result)
         log_dict['train/frac_reward_zero_std'] = frac_zero_std
         logger.info(f'Step {step}: {log_dict}')
         step += 1
+        metrics.reset()
 
     # Save final checkpoint
-    twinkle_path = model.save(name='grpo-countdown-final', save_optimizer=True)
-    logger.info(f'Saved final checkpoint: {twinkle_path}')
+    result = model.save(name='grpo-countdown-final', save_optimizer=True)
+    logger.info(f'Saved final checkpoint: {result}')
 
 
 if __name__ == '__main__':

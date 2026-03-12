@@ -79,7 +79,7 @@ class ServerState:
         """
         return self._session_mgr.touch(session_id)
 
-    async def get_session_last_heartbeat(self, session_id: str) -> float | None:
+    def get_session_last_heartbeat(self, session_id: str) -> float | None:
         """Get the last heartbeat timestamp for a session.
 
         Returns:
@@ -353,8 +353,8 @@ class ServerStateProxy:
     async def touch_session(self, session_id: str) -> bool:
         return await self._actor.touch_session.remote(session_id)
 
-    async def get_session_last_heartbeat(self, session_id: str) -> float | None:
-        return await self._actor.get_session_last_heartbeat.remote(session_id)
+    def get_session_last_heartbeat(self, session_id: str) -> float | None:
+        return ray.get(self._actor.get_session_last_heartbeat.remote(session_id))
 
     # ----- Model Registration -----
 

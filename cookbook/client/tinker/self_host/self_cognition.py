@@ -92,9 +92,9 @@ def eval():
     # Step 1: Load the trained LoRA checkpoint for inference
 
     # Path to a previously saved LoRA checkpoint (twinkle:// URI)
-    weight_path = 'twinkle://20260212_174205-Qwen_Qwen2_5-7B-Instruct-51edc9ed/weights/twinkle-lora-2'
+    weight_path = 'twinkle://20260301_142318-Qwen_Qwen3-4B-199d2cdb/weights/twinkle-lora-0'
 
-    service_client = ServiceClient(base_url=base_url, api_key=os.environ.get('MODELSCOPE_TOKEN'))
+    service_client = ServiceClient(base_url=base_url, api_key=api_key)
     sampling_client = service_client.create_sampling_client(model_path=weight_path, base_model=base_model)
 
     # Step 2: Prepare the chat prompt
@@ -119,7 +119,6 @@ def eval():
     params = types.SamplingParams(
         max_tokens=50,  # Maximum tokens to generate
         temperature=0.2,  # Low temperature for more focused responses
-        stop=['\n']  # Stop at newline
     )
 
     # Sample 8 independent completions
@@ -134,5 +133,5 @@ def eval():
 
 
 if __name__ == '__main__':
-    train()   # Uncomment to run training
-    # eval()      # Run evaluation / inference
+    # train()   # Uncomment to run training
+    eval()      # Run evaluation / inference

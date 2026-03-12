@@ -11,8 +11,6 @@ to handle expired adapters without using callbacks or polling.
 """
 from __future__ import annotations
 
-import asyncio
-import concurrent.futures
 import threading
 import time
 from typing import TYPE_CHECKING, Any
@@ -37,6 +35,7 @@ class AdapterManagerMixin:
 
     Attributes:
         _adapter_timeout: Session inactivity timeout in seconds used to determine if a session is alive.
+        _adapter_max_lifetime: Maximum lifetime in seconds for any adapter, regardless of session liveness.
     """
 
     # Type hint for state attribute that inheriting classes must provide
@@ -45,6 +44,7 @@ class AdapterManagerMixin:
     def _init_adapter_manager(
         self,
         adapter_timeout: float = 1800.0,
+        adapter_max_lifetime: float = 36000.0,
     ) -> None:
         """Initialize the adapter manager.
 
@@ -53,8 +53,11 @@ class AdapterManagerMixin:
         Args:
             adapter_timeout: Timeout in seconds used to check whether a session is still alive.
                 Default is 1800.0 (30 minutes).
+            adapter_max_lifetime: Maximum lifetime in seconds for an adapter regardless of session
+                liveness. Adapters older than this are treated as expired. Default is 36000.0 (10 hours).
         """
         self._adapter_timeout = adapter_timeout
+        self._adapter_max_lifetime = adapter_max_lifetime
 
         # Adapter lifecycle tracking
         # Dict mapping adapter_name ->
@@ -64,9 +67,6 @@ class AdapterManagerMixin:
         # Countdown thread
         self._adapter_countdown_thread: threading.Thread | None = None
         self._adapter_countdown_running = False
-
-        # Event loop reference used to bridge sync thread → async state calls
-        self._adapter_event_loop: asyncio.AbstractEventLoop | None = None
 
     def register_adapter(self, adapter_name: str, token: str, session_id: str) -> None:
         """Register a new adapter for lifecycle tracking.
@@ -94,7 +94,7 @@ class AdapterManagerMixin:
         logger.debug(
             f'[AdapterManager] Registered adapter {adapter_name} for token {token[:8]}... (session: {session_id})')
 
-    async def _is_session_alive(self, session_id: str) -> bool:
+    def _is_session_alive(self, session_id: str) -> bool:
         """Check if a session is still alive via state proxy.
 
         Args:
@@ -107,7 +107,7 @@ class AdapterManagerMixin:
             return True  # No session association means always alive
 
         # Get session last heartbeat through proxy
-        last_heartbeat = await self.state.get_session_last_heartbeat(session_id)
+        last_heartbeat = self.state.get_session_last_heartbeat(session_id)
         if last_heartbeat is None:
             return False  # Session doesn't exist
 
@@ -216,17 +216,18 @@ class AdapterManagerMixin:
             f'Adapter {adapter_name} not found'
 
     def _adapter_countdown_loop(self) -> None:
-        """Background thread that monitors and handles adapters whose session has expired.
+        """Background thread that monitors and handles adapters whose session has expired or exceeded max lifetime.
 
         This thread runs continuously and:
-        1. Checks session liveness for all registered adapters every second
-        2. Calls _on_adapter_expired() for adapters whose session has expired
-        3. Removes expired adapters from tracking
+        1. Checks whether an adapter has exceeded `_adapter_max_lifetime` (sync, no async call)
+        2. Checks session liveness for remaining adapters every second
+        3. Calls _on_adapter_expired() for adapters that have expired
+        4. Removes expired adapters from tracking
         """
         logger.debug(f'[AdapterManager] Countdown thread started (session_timeout={self._adapter_timeout}s)')
         while self._adapter_countdown_running:
             try:
-                time.sleep(1)
+                time.sleep(10)
 
                 expired_adapters: list[tuple[str, str | None]] = []
                 # Create snapshot to avoid modification during iteration
@@ -236,17 +237,24 @@ class AdapterManagerMixin:
                         continue
 
                     session_id = info.get('session_id')
-                    if self._adapter_event_loop is not None and self._adapter_event_loop.is_running():
-                        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-                            self._is_session_alive(session_id), self._adapter_event_loop)
-                        try:
-                            session_alive = future.result(timeout=5.0)
-                        except Exception as e:
-                            logger.warning(f'[AdapterManager] Failed to check session liveness for {adapter_name}: {e}')
-                            continue
-                    else:
-                        logger.warning(
-                            f'[AdapterManager] No event loop available to check session {session_id}, skipping')
+                    created_at = info.get('created_at', 0.0)
+                    now = time.time()
+
+                    # Check max lifetime first (no async call needed)
+                    if now - created_at >= self._adapter_max_lifetime:
+                        logger.debug(f'[AdapterManager] Adapter {adapter_name} exceeded max lifetime '
+                                     f'({self._adapter_max_lifetime}s), marking as expired')
+                        info['expiring'] = True
+                        info['state'] = {}
+                        token = info.get('token')
+                        expired_adapters.append((adapter_name, token, session_id))
+                        continue
+
+                    try:
+                        session_alive = self._is_session_alive(session_id)
+                    except Exception as e:
+                        logger.warning(f'[AdapterManager] Failed to check session liveness for {adapter_name}: '
+                                       f'{type(e).__name__}: {e}')
                         continue
                     session_expired = not session_alive
                     logger.debug(f'[AdapterManager] Adapter {adapter_name} session check '
@@ -289,10 +297,6 @@ class AdapterManagerMixin:
         """
         if not self._adapter_countdown_running:
             self._adapter_countdown_running = True
-            try:
-                self._adapter_event_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._adapter_event_loop = None
             self._adapter_countdown_thread = threading.Thread(target=self._adapter_countdown_loop, daemon=True)
             self._adapter_countdown_thread.start()
             logger.debug('[AdapterManager] Countdown thread started')

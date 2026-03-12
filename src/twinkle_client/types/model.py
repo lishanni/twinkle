@@ -208,7 +208,7 @@ class CalculateMetricResponse(BaseModel):
 
 class SaveResponse(BaseModel):
     """Response for /save endpoint (returns twinkle path + checkpoint dir)."""
-    result: str
+    twinkle_path: str
     checkpoint_dir: Optional[str] = None
 
 

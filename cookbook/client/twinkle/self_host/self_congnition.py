@@ -50,7 +50,7 @@ def train():
     dataset = Dataset(dataset_meta=DatasetMeta('ms://swift/self-cognition', data_slice=range(500)))
 
     # Apply a chat template so the data matches the model's expected input format
-    dataset.set_template('Template', model_id='ms://Qwen/Qwen3.5-4B', max_length=512)
+    dataset.set_template('Template', model_id='ms://Qwen/Qwen3-4B', max_length=512)
 
     # Replace placeholder names in the dataset with custom model/author names
     dataset.map('SelfCognitionProcessor', init_args={'model_name': 'twinkle模型', 'model_author': 'ModelScope社区'})
@@ -64,7 +64,7 @@ def train():
     # Step 5: Configure the model
 
     # Create a multi-LoRA Transformers model pointing to the base model on ModelScope
-    model = MultiLoraTransformersModel(model_id='ms://Qwen/Qwen3.5-4B')
+    model = MultiLoraTransformersModel(model_id='ms://Qwen/Qwen3-4B')
 
     # Define LoRA configuration: apply low-rank adapters to all linear layers
     lora_config = LoraConfig(target_modules='all-linear')
@@ -119,7 +119,7 @@ def train():
             if step % 2 == 0:
                 # Print metric
                 metric = model.calculate_metric(is_training=True)
-                logger.info(f'Current is step {step} of {len(dataloader)}, metric: {metric.model_dump()}')
+                logger.info(f'Current is step {step} of {len(dataloader)}, metric: {metric.result}')
 
         # Step 8: Save the trained checkpoint
         twinkle_path = model.save(name=f'twinkle-epoch-{epoch}', save_optimizer=True)
