@@ -34,7 +34,7 @@ def init_tinker_client(**kwargs) -> None:
 def init_twinkle_client(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    session_heartbeat_interval: int = 30,
+    session_heartbeat_interval: int = 10,
     **kwargs,
 ) -> 'TwinkleClient':
     """
@@ -54,7 +54,7 @@ def init_twinkle_client(
     Args:
         base_url: Twinkle server base URL.  Falls back to ``TWINKLE_SERVER_URL``.
         api_key: Authentication token.  Falls back to ``TWINKLE_SERVER_TOKEN``.
-        session_heartbeat_interval: Seconds between session touch calls (default: 30).
+        session_heartbeat_interval: Seconds between session touch calls (default: 10).
         **kwargs: Additional keyword arguments forwarded to :class:`TwinkleClient`.
 
     Returns:

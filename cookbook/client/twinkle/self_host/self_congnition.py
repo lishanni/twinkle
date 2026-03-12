@@ -95,7 +95,7 @@ def train():
         model.load(resume_path, load_optimizer=True)
 
     # Step 7: Run the training loop
-    logger.info(model.get_train_configs())
+    logger.info(model.get_train_configs().model_dump())
 
     for epoch in range(3):
         logger.info(f'Starting epoch {epoch}')

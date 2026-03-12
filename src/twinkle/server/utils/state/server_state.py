@@ -239,28 +239,6 @@ class ServerState:
             queue_state_reason=queue_state_reason,
         )
 
-    # ----- Config Management -----
-
-    def add_config(self, key: str, value: Any) -> None:
-        """Add or update a configuration value."""
-        self._config_mgr.add(key, value)
-
-    def add_or_get(self, key: str, value: Any) -> Any:
-        """Add a config value if the key does not exist; otherwise return the existing value."""
-        return self._config_mgr.add_or_get(key, value)
-
-    def get_config(self, key: str) -> Any | None:
-        """Get a configuration value by key."""
-        return self._config_mgr.get(key)
-
-    def pop_config(self, key: str) -> Any | None:
-        """Remove and return a configuration value."""
-        return self._config_mgr.pop(key)
-
-    def clear_config(self) -> None:
-        """Clear all configuration values."""
-        self._config_mgr.clear()
-
     # ----- Resource Cleanup -----
 
     def cleanup_expired_resources(self) -> dict[str, int]:
@@ -431,23 +409,6 @@ class ServerStateProxy:
         ray.get(
             self._actor.store_future_status.remote(request_id, status, model_id, reason, result, queue_state,
                                                    queue_state_reason))
-
-    # ----- Config Management -----
-
-    def add_config(self, key: str, value: Any):
-        return ray.get(self._actor.add_config.remote(key, value))
-
-    def add_or_get(self, key: str, value: Any) -> Any:
-        return ray.get(self._actor.add_or_get.remote(key, value))
-
-    def get_config(self, key: str) -> Any | None:
-        return ray.get(self._actor.get_config.remote(key))
-
-    def pop_config(self, key: str) -> Any | None:
-        return ray.get(self._actor.pop_config.remote(key))
-
-    def clear_config(self):
-        return ray.get(self._actor.clear_config.remote())
 
     # ----- Resource Cleanup -----
 

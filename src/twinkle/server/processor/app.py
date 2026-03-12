@@ -82,21 +82,6 @@ def build_processor_app(ncpu_proc_per_node: int,
         def assert_processor_exists(self, processor_id: str):
             assert processor_id and processor_id in self.resource_dict, f'Processor {processor_id} not found'
 
-        def handle_processor_count(self, token: str, add: bool):
-            user_key = token + '_' + 'processor'
-            cur_count = self.state.get_config(user_key) or 0
-            if add:
-                if cur_count < self.per_token_processor_limit:
-                    self.state.add_config(user_key, cur_count + 1)
-                else:
-                    raise RuntimeError(f'Processor count limitation reached: {self.per_token_processor_limit}')
-            else:
-                if cur_count > 0:
-                    cur_count -= 1
-                    self.state.add_config(user_key, cur_count)
-                if cur_count <= 0:
-                    self.state.pop_config(user_key)
-
         @app.post('/twinkle/create', response_model=types.ProcessorCreateResponse)
         def create(self, request: Request, body: types.ProcessorCreateRequest) -> types.ProcessorCreateResponse:
             processor_type_name = body.processor_type
@@ -106,7 +91,6 @@ def build_processor_app(ncpu_proc_per_node: int,
             assert processor_type_name in processors, f'Invalid processor type: {processor_type_name}'
             processor_module = importlib.import_module(f'twinkle.{processor_type_name}')
             assert hasattr(processor_module, class_type), f'Class {class_type} not found in {processor_type_name}'
-            self.handle_processor_count(request.state.token, True)
             processor_id = str(uuid.uuid4().hex)
             self.key_token_dict[processor_id] = request.state.token
 

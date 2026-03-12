@@ -116,34 +116,33 @@ class TwinkleClient:
         return CreateSessionResponse(**resp.json()).session_id
 
     def _touch_session_loop(self) -> None:
-        """Background loop: touch the session every N seconds.
+        """Background loop: touch the session every ``_heartbeat_interval`` seconds.
 
-        The sleep interval is corrected for the time spent in the request so
-        that the
-                 server-visible gap stays close to ``_heartbeat_interval``
-        even when the HTTP call itself takes a few seconds.
+        Uses a fixed-rate design: the wall-clock period between successive
+        server-side heartbeats stays close to ``_heartbeat_interval`` regardless
+        of how long the HTTP call takes, by subtracting elapsed time from the
+        subsequent sleep.
         """
         import time
-        while not self._stop_event.wait(timeout=self._heartbeat_interval):
+        while not self._stop_event.is_set():
             t0 = time.monotonic()
+            success = False
             try:
-                logger.debug('[TwinkleClient] Touching session...')
+                logger.debug(f'[TwinkleClient] Touching session (session={self._session_id})...')
                 resp = http_post(
                     self._get_url('/session_heartbeat'),
                     json_data=SessionHeartbeatRequest(session_id=self._session_id).model_dump(),
                     timeout=min(self._heartbeat_interval, 10),
                 )
-                logger.debug(f'[TwinkleClient] Session heartbeat response: {resp.status_code}')
                 resp.raise_for_status()
+                success = True
             except Exception as e:
-                # Do not crash the background thread on transient errors.
                 logger.error(f'[TwinkleClient] Session heartbeat error: {e}')
             elapsed = time.monotonic() - t0
-            # If the request consumed most of the interval, skip the residual
-            # wait so we don't fall further behind; next full sleep follows.
-            residual = self._heartbeat_interval - elapsed
-            if residual > 0:
-                self._stop_event.wait(timeout=residual)
+            if success:
+                logger.debug(f'[TwinkleClient] Session heartbeat OK (elapsed={elapsed:.2f}s)')
+            sleep_time = max(0.0, self._heartbeat_interval - elapsed)
+            self._stop_event.wait(timeout=sleep_time)
 
     def close(self) -> None:
         """Stop the background heartbeat thread and clear session context."""
