@@ -23,6 +23,7 @@ applications:
 
     deployments:
       - name: TinkerCompatServer
+        max_ongoing_requests: 50
         autoscaling_config:
           min_replicas: 1                # Minimum number of replicas
           max_replicas: 1                # Maximum number of replicas

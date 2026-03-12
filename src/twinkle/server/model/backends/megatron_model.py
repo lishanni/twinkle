@@ -1,32 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """
 Megatron backend model for the unified model deployment.
-Moved from tinker/common/megatron_model.py — imports updated.
 """
 import torch
 from tinker import types
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from twinkle import remote_class, remote_function
+from twinkle.model.megatron import MultiLoraMegatronModel
 from twinkle.server.common.datum import datum_to_input_feature, extract_rl_feature
 from twinkle.server.model.backends.common import TwinkleCompatModelBase, clean_metrics, collect_forward_backward_results
-from twinkle.utils import exists, requires
-
-if TYPE_CHECKING:
-    from twinkle.model.megatron import MultiLoraMegatronModel as _MegatronBase
-elif exists('megatron_core'):
-    import twinkle.model.megatron as megatron_module
-    _MegatronBase = megatron_module.MultiLoraMegatronModel
-else:
-
-    class _MegatronBase:
-
-        def __init__(self, *args, **kwargs):
-            requires('megatron_core')
 
 
 @remote_class(execute='all')
-class TwinkleCompatMegatronModel(_MegatronBase, TwinkleCompatModelBase):
+class TwinkleCompatMegatronModel(MultiLoraMegatronModel, TwinkleCompatModelBase):
     """Compatibility wrapper around MultiLoraMegatronModel for Twinkle/Tinker.
 
     Moved from tinker/common/megatron_model.py — logic unchanged.

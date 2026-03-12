@@ -61,6 +61,7 @@ class ModelManagement(TaskQueueMixin, AdapterManagerMixin):
         # Choose model backend
         if use_megatron:
             from ..model.backends.megatron_model import TwinkleCompatMegatronModel
+
             self.model = TwinkleCompatMegatronModel(
                 model_id=model_id,
                 device_mesh=self.device_mesh,
