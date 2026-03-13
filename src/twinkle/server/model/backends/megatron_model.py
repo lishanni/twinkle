@@ -4,12 +4,14 @@ Megatron backend model for the unified model deployment.
 """
 import torch
 from tinker import types
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 from twinkle import remote_class, remote_function
+from twinkle.data_format import InputFeature, Trajectory
 from twinkle.model.megatron import MultiLoraMegatronModel
 from twinkle.server.common.datum import datum_to_input_feature, extract_rl_feature
-from twinkle.server.model.backends.common import TwinkleCompatModelBase, clean_metrics, collect_forward_backward_results
+from twinkle.server.model.backends.common import (TwinkleCompatModelBase, clean_metrics,
+                                                  collect_forward_backward_results, to_cpu_safe_output)
 
 
 @remote_class(execute='all')
@@ -112,3 +114,14 @@ class TwinkleCompatMegatronModel(MultiLoraMegatronModel, TwinkleCompatModelBase)
             return super().load(name=resolved.checkpoint_name, output_dir=resolved.checkpoint_dir, **kwargs)
         else:
             return super().load(name=resolved.checkpoint_name, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Twinkle-native methods (InputFeature/Trajectory-based I/O)
+    # ------------------------------------------------------------------
+
+    @remote_function(dispatch='slice_dp', collect='mean')
+    def forward_backward(self, *, inputs: Union[InputFeature, List[InputFeature], Trajectory, List[Trajectory]],
+                         **kwargs):
+        """Forward+backward for twinkle-native clients (InputFeature/Trajectory I/O)."""
+        output = super().forward_backward(inputs=inputs, **kwargs)
+        return to_cpu_safe_output(output)

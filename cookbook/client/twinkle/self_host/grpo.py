@@ -103,12 +103,13 @@ def train():
     model.set_loss('GRPOLoss', epsilon=0.2, beta=0.0)
 
     # Set optimizer and LR scheduler
-    model.set_optimizer('AdamW', lr=LEARNING_RATE)
-    model.set_lr_scheduler(
-        'CosineWarmupScheduler',
-        num_warmup_steps=500,
-        num_training_steps=MAX_STEPS,
-    )
+    model.set_optimizer('Adam', lr=LEARNING_RATE)
+    # Set LR scheduler (if server use megatron, don't support set self.lr_scheduler)
+    # model.set_lr_scheduler(
+    #     'CosineWarmupScheduler',
+    #     num_warmup_steps=500,
+    #     num_training_steps=MAX_STEPS,
+    # )
 
     # Set processor and template for encoding inputs
     model.set_processor('InputProcessor')

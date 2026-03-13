@@ -217,7 +217,7 @@ def main():
     from tinker import ServiceClient
     service_client = ServiceClient(
         base_url='http://localhost:8000',
-        api_key=os.environ.get('MODELSCOPE_TOKEN')
+        api_key='EMPTY_TOKEN'
     )
 
     logger.info('Creating LoRA training client...')

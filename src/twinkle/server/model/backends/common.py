@@ -5,9 +5,10 @@ Shared helpers and base classes for backend model implementations.
 import numpy as np
 import re
 import torch
+from collections.abc import Mapping
 from numbers import Number
 from tinker import types
-from typing import List
+from typing import Any, List
 
 from twinkle import DeviceMesh
 from twinkle.template import Template
@@ -56,6 +57,33 @@ def collect_forward_backward_results(results, device_mesh: DeviceMesh):
         avg_loss = 0.0
 
     return [all_outputs, avg_loss]
+
+
+def to_cpu_safe_output(obj: Any) -> Any:
+    """Convert nested model outputs into CPU-safe Python objects for HTTP transport.
+
+    Recursively walks tensors, numpy arrays, mappings and sequences,
+    converting each tensor/array to a plain Python scalar or list so
+    Ray can serialise the result without requiring CUDA on the driver.
+    """
+    from twinkle.utils import torch_util
+
+    if isinstance(obj, torch.Tensor):
+        tensor = torch_util.to_local_tensor(obj).detach().cpu()
+        if tensor.numel() == 1:
+            return tensor.item()
+        return tensor.tolist()
+    if isinstance(obj, np.ndarray):
+        if obj.size == 1:
+            return obj.item()
+        return obj.tolist()
+    if isinstance(obj, np.generic):
+        return obj.item()
+    if isinstance(obj, Mapping):
+        return {key: to_cpu_safe_output(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_cpu_safe_output(value) for value in obj]
+    return obj
 
 
 def clean_metrics(metrics: dict) -> dict:
