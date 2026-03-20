@@ -111,6 +111,8 @@ class InputProcessor:
 
         if self.device_mesh is None:
             return inputs
+        if self.framework == 'transformers':
+            return inputs
 
         def _pad_cp(_input: InputFeature) -> InputFeature:
             # Pad sequence for parallel compatibility
@@ -170,6 +172,8 @@ class InputProcessor:
     def split_cp(self, inputs: List[Dict[str, Any]], **kwargs) -> List[Dict[str, Any]]:
 
         if self.device_mesh is None:
+            return inputs
+        if self.framework == 'transformers':
             return inputs
 
         def _split_cp(inputs: Dict[str, Any]) -> Dict[str, Any]:

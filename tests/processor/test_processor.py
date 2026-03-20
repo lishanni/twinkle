@@ -4,6 +4,7 @@ import pytest
 import torch
 
 import twinkle
+from twinkle import DeviceMesh
 from twinkle.processor import GRPOLossProcessor, InputProcessor
 
 twinkle.initialize(mode='local')
@@ -138,3 +139,23 @@ class TestGRPOMode:
         out = proc.collate_fn(batch)
         assert out[0]['input_ids'].shape == (1, 6)
         assert out[0]['labels'].shape == (1, 6)
+
+
+class TestTransformersDerivedRingMode:
+
+    def test_transformers_skips_explicit_cp_preprocessing(self):
+        mesh = DeviceMesh.from_sizes(cp_size=2, device_type='cuda')
+        proc = InputProcessor(device_mesh=mesh, framework='transformers')
+        batch = [{
+            'input_ids': torch.tensor([[1, 2, 3, 4]], dtype=torch.long),
+            'attention_mask': torch.ones((1, 4), dtype=torch.long),
+            'position_ids': torch.tensor([[0, 1, 2, 3]], dtype=torch.long),
+            'labels': torch.tensor([[5, 6, 7, 8]], dtype=torch.long),
+        }]
+        padded = proc.pad_cp(batch)
+        assert torch.equal(padded[0]['input_ids'], batch[0]['input_ids'])
+        assert torch.equal(padded[0]['position_ids'], batch[0]['position_ids'])
+
+        split = proc.split_cp(batch)
+        assert torch.equal(split[0]['input_ids'], batch[0]['input_ids'])
+        assert torch.equal(split[0]['labels'], batch[0]['labels'])

@@ -19,7 +19,8 @@ device_group = [DeviceGroup(
     device_type=Platform.get_platform().device_prefix(),
 )]
 
-# FSDP + SP validation over 4 GPUs: dp=2, fsdp=2 (SP only affects input slicing)
+# FSDP + sequence-parallel validation over 4 GPUs: dp=2, fsdp=2.
+# In Transformers route, ulysses_size is the total sequence-parallel degree.
 device_mesh = DeviceMesh(
     device_type='cuda',
     mesh=np.arange(4).reshape(2, 2),
