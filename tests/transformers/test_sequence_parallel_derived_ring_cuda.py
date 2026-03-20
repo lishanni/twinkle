@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import copy
+import math
 import os
 import socket
 import unittest
@@ -38,6 +39,7 @@ def _make_labels(input_ids: torch.Tensor) -> torch.Tensor:
 def _make_case(case_name: str) -> dict:
     cases = {
         'cp_only': {
+            'expected_mode': 'cp_only',
             'world_size': 2,
             'ulysses_size': 2,
             'num_attention_heads': 1,
@@ -45,6 +47,7 @@ def _make_case(case_name: str) -> dict:
             'seq_len': 769,
         },
         'cp_sp': {
+            'expected_mode': 'cp_sp',
             'world_size': 4,
             'ulysses_size': 4,
             'num_attention_heads': 6,
@@ -52,26 +55,33 @@ def _make_case(case_name: str) -> dict:
             'seq_len': 769,
         },
         'sp_only_memory': {
+            'expected_mode': 'sp_only',
             'world_size': 4,
             'ulysses_size': 2,
             'num_attention_heads': 8,
             'hidden_size': 128,
+            'num_hidden_layers': 2,
             'seq_lens': [255, 511, 1023],
             'batch_sizes': [1, 2, 4],
         },
         'cp_only_memory': {
+            'expected_mode': 'cp_only',
             'world_size': 2,
             'ulysses_size': 2,
             'num_attention_heads': 1,
-            'hidden_size': 64,
+            'hidden_size': 128,
+            'num_hidden_layers': 4,
             'seq_lens': [511, 1023, 2047],
             'batch_sizes': [1],
         },
         'cp_sp_memory': {
+            'expected_mode': 'cp_sp',
             'world_size': 4,
             'ulysses_size': 4,
+            # gcd(6, 4) = 2 -> sp=2, rp=2
             'num_attention_heads': 6,
-            'hidden_size': 96,
+            'hidden_size': 192,
+            'num_hidden_layers': 4,
             'seq_lens': [511, 1023, 2047],
             'batch_sizes': [1],
         },
@@ -79,16 +89,50 @@ def _make_case(case_name: str) -> dict:
     return copy.deepcopy(cases[case_name])
 
 
-def _build_tiny_llama(case: dict, device: torch.device) -> LlamaForCausalLM:
+def _validate_case_config(case: dict):
     hidden_size = int(case['hidden_size'])
     num_heads = int(case['num_attention_heads'])
+    ulysses_size = int(case['ulysses_size'])
+    expected_mode = case.get('expected_mode')
+
+    if hidden_size % num_heads != 0:
+        raise ValueError(
+            f'Invalid test case config: hidden_size ({hidden_size}) must be divisible by '
+            f'num_attention_heads ({num_heads}).')
+
+    head_dim = hidden_size // num_heads
+    if head_dim % 2 != 0:
+        raise ValueError(
+            f'Invalid test case config: head_dim ({head_dim}) must be even for RoPE. '
+            f'Got hidden_size={hidden_size}, num_attention_heads={num_heads}.')
+
+    sp_world_size = math.gcd(num_heads, ulysses_size)
+    rp_world_size = ulysses_size // sp_world_size
+    mode = 'sp_only'
+    if rp_world_size > 1 and sp_world_size == 1:
+        mode = 'cp_only'
+    elif rp_world_size > 1 and sp_world_size > 1:
+        mode = 'cp_sp'
+
+    if expected_mode is not None and mode != expected_mode:
+        raise ValueError(
+            f'Invalid test case config: expected {expected_mode}, but derived {mode}. '
+            f'Got ulysses_size={ulysses_size}, num_attention_heads={num_heads}, '
+            f'sp_world_size={sp_world_size}, rp_world_size={rp_world_size}.')
+
+
+def _build_tiny_llama(case: dict, device: torch.device) -> LlamaForCausalLM:
+    _validate_case_config(case)
+    hidden_size = int(case['hidden_size'])
+    num_heads = int(case['num_attention_heads'])
+    num_hidden_layers = int(case.get('num_hidden_layers', 1))
     dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
     max_seq_len = int(case.get('seq_len', max(case.get('seq_lens', [1024])))) + 32
     config = LlamaConfig(
         vocab_size=256,
         hidden_size=hidden_size,
         intermediate_size=hidden_size * 4,
-        num_hidden_layers=1,
+        num_hidden_layers=num_hidden_layers,
         num_attention_heads=num_heads,
         num_key_value_heads=num_heads,
         max_position_embeddings=max_seq_len,

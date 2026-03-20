@@ -41,6 +41,18 @@ from twinkle.utils.framework import Torch
 from twinkle.utils.grad_clip import normalize_and_clip_grad_norm
 
 
+def _get_raw_dp_fsdp_world_size(device_mesh: Optional[DeviceMesh]) -> int:
+    if device_mesh is None:
+        return 1
+    dp_world_size = device_mesh.dp_world_size or 1
+    fsdp_world_size = device_mesh.fsdp_world_size or 1
+    if dp_world_size <= 0:
+        dp_world_size = 1
+    if fsdp_world_size <= 0:
+        fsdp_world_size = 1
+    return dp_world_size * fsdp_world_size
+
+
 @dataclass
 class OptimizerGroup:
     adapter_name: str = None
@@ -93,12 +105,13 @@ class OptimizerGroup:
     def _ensure_dp_group(self):
         if self._dp_group is not None or self._device_mesh is None:
             return
-        if self._device_mesh.data_world_size <= 1:
+        raw_world_size = _get_raw_dp_fsdp_world_size(self._device_mesh)
+        if raw_world_size <= 1:
             return
         if not dist.is_available() or not dist.is_initialized():
             return
-        if dist.get_world_size() < self._device_mesh.data_world_size:
-            # World size is smaller than the requested dp group; skip to avoid crash.
+        if dist.get_world_size() < raw_world_size:
+            # World size is smaller than the requested dp/fsdp group; skip to avoid crash.
             return
         dims = [dim for dim in ('dp', 'fsdp') if self._device_mesh.has_dim(dim)]
         if not dims:

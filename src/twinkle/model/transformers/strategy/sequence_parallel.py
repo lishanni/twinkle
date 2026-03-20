@@ -1120,13 +1120,6 @@ class SequenceParallel:
                 return True
         return False
 
-    @staticmethod
-    def _build_default_position_ids(reference: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
-        if reference is None or not torch.is_tensor(reference) or reference.dim() < 2:
-            return None
-        batch_size, seq_len = reference.shape[0], reference.shape[1]
-        return torch.arange(seq_len, device=reference.device).unsqueeze(0).repeat(batch_size, 1)
-
     def prepare_inputs(self, inputs):
         """Prepare inputs
 
@@ -1136,12 +1129,6 @@ class SequenceParallel:
         position_ids = None
         input_ids = inputs.get('input_ids')
         position_ids = inputs.get('position_ids')
-        if position_ids is None:
-            position_ids = self._build_default_position_ids(input_ids)
-            if position_ids is None:
-                position_ids = self._build_default_position_ids(inputs.get('labels'))
-            if position_ids is not None:
-                inputs['position_ids'] = position_ids
         if position_ids is not None and input_ids is not None and position_ids.shape[0] == input_ids.shape[0]:
             self.extra_kwargs['position_ids'] = position_ids.clone()
         self.extra_kwargs['is_packed'] = self._is_packed_position_ids(position_ids)
