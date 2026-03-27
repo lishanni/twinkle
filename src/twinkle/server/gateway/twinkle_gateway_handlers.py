@@ -128,8 +128,8 @@ def _register_twinkle_routes(app: FastAPI, self_fn: Callable[[], GatewayServer])
 
     @app.get('/twinkle/status')
     async def status(
-        request: Request,
-        self: GatewayServer = Depends(self_fn),
+            request: Request,
+            self: GatewayServer = Depends(self_fn),
     ) -> dict:
         cleanup_stats = await self.state.get_cleanup_stats()
         return {

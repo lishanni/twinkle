@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from twinkle.server.utils.metrics import get_resource_metrics
 from twinkle.utils.logger import get_logger
 from .config_manager import ConfigManager
 from .future_manager import FutureManager
@@ -291,13 +292,7 @@ class ServerState:
 
     async def _metrics_loop(self) -> None:
         """Background task that updates resource gauge metrics every N seconds."""
-        try:
-            from twinkle.server.utils.metrics import get_resource_metrics
-            resource_metrics = get_resource_metrics()
-        except Exception as e:
-            logger.debug(f'[ServerState] Could not initialize resource metrics: {e}')
-            return
-
+        resource_metrics = get_resource_metrics()
         while self._metrics_running:
             try:
                 await asyncio.sleep(self._metrics_update_interval)

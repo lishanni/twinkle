@@ -2,13 +2,13 @@
 """
 Central metrics module for Twinkle server observability.
 
-Provides lazy-initialized ray.util.metrics instruments that feed both
-the Ray Dashboard (port 8265) and Prometheus (via /api/prometheus).
+Provides ray.util.metrics instruments that feed both the Ray Dashboard
+(port 8265) and Prometheus (via /api/prometheus).
 
-All metric names use the ``twinkle_`` prefix.  Metrics objects are created
-on first use because ``ray.util.metrics`` requires Ray to be initialised.
+All metric names use the ``twinkle_`` prefix.  Metric instances are
+cached per deployment to avoid duplicate registration.
 
-Two public entry-points:
+Public entry-points:
 
 * ``create_metrics_middleware(deployment)`` – FastAPI HTTP middleware
 * ``get_task_metrics(deployment)``          – task-queue / rate-limit gauges
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import time
 from collections import namedtuple
+from ray.util.metrics import Counter, Gauge, Histogram
 from typing import Any, Callable
 
 from twinkle.utils.logger import get_logger
@@ -28,7 +29,18 @@ logger = get_logger()
 # Histogram bucket boundaries (seconds) – shared by all histograms
 # ---------------------------------------------------------------------------
 _HISTOGRAM_BOUNDARIES = [
-    0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0,
+    0.01,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    30.0,
+    60.0,
+    120.0,
     300.0,
 ]
 
@@ -63,17 +75,15 @@ _RequestMetrics = namedtuple('_RequestMetrics', [
     'request_duration_seconds',
 ])
 
-
 # ---------------------------------------------------------------------------
 # A.  Request-level metrics  (FastAPI middleware)
 # ---------------------------------------------------------------------------
+
 
 def _get_request_metrics(deployment: str) -> _RequestMetrics:
     """Return (or create) per-deployment HTTP request metrics."""
     if deployment in _request_metrics_cache:
         return _request_metrics_cache[deployment]
-
-    from ray.util.metrics import Counter, Histogram
 
     metrics = _RequestMetrics(
         requests_total=Counter(
@@ -108,31 +118,22 @@ def create_metrics_middleware(deployment: str) -> Callable:
 
     async def metrics_middleware(request: Any, call_next: Callable) -> Any:
         start = time.monotonic()
-        response = None
-        try:
-            response = await call_next(request)
-            return response
-        finally:
-            try:
-                elapsed = time.monotonic() - start
-                status = str(response.status_code) if response else '500'
-                method = request.url.path
-                m = _get_request_metrics(deployment)
-                m.requests_total.inc(
-                    tags={
-                        'deployment': deployment,
-                        'method': method,
-                        'status': status,
-                    })
-                m.request_duration_seconds.observe(
-                    elapsed,
-                    tags={
-                        'deployment': deployment,
-                        'method': method,
-                    })
-            except Exception:
-                # Never let metrics recording break request handling.
-                pass
+        response = await call_next(request)
+        elapsed = time.monotonic() - start
+        status = str(response.status_code)
+        method = request.url.path
+        m = _get_request_metrics(deployment)
+        m.requests_total.inc(tags={
+            'deployment': deployment,
+            'method': method,
+            'status': status,
+        })
+        m.request_duration_seconds.observe(
+            elapsed, tags={
+                'deployment': deployment,
+                'method': method,
+            })
+        return response
 
     return metrics_middleware
 
@@ -140,6 +141,7 @@ def create_metrics_middleware(deployment: str) -> Callable:
 # ---------------------------------------------------------------------------
 # B.  Task-queue metrics
 # ---------------------------------------------------------------------------
+
 
 def get_task_metrics(deployment: str) -> TaskMetrics:
     """Return (or create) per-deployment task-queue metrics.
@@ -156,13 +158,11 @@ def get_task_metrics(deployment: str) -> TaskMetrics:
     if deployment in _task_metrics_cache:
         return _task_metrics_cache[deployment]
 
-    from ray.util.metrics import Counter, Gauge, Histogram
-
     metrics = TaskMetrics(
         queue_depth=Gauge(
             'twinkle_task_queue_depth',
             description='Current number of queued tasks.',
-            tag_keys=('deployment',),
+            tag_keys=('deployment', ),
         ),
         tasks_total=Counter(
             'twinkle_tasks_total',
@@ -184,12 +184,12 @@ def get_task_metrics(deployment: str) -> TaskMetrics:
         rate_limit_rejections=Counter(
             'twinkle_rate_limit_rejections_total',
             description='Total rate-limit rejections.',
-            tag_keys=('deployment',),
+            tag_keys=('deployment', ),
         ),
         rate_limiter_active_tokens=Gauge(
             'twinkle_rate_limiter_active_tokens',
             description='Number of tokens tracked by the rate limiter.',
-            tag_keys=('deployment',),
+            tag_keys=('deployment', ),
         ),
     )
     _task_metrics_cache[deployment] = metrics
@@ -199,6 +199,7 @@ def get_task_metrics(deployment: str) -> TaskMetrics:
 # ---------------------------------------------------------------------------
 # D.  Resource gauges  (ServerState actor, updated every 15 s)
 # ---------------------------------------------------------------------------
+
 
 def get_resource_metrics() -> ResourceMetrics:
     """Return (or create) global resource gauge metrics.
@@ -213,8 +214,6 @@ def get_resource_metrics() -> ResourceMetrics:
     global _resource_metrics_cache
     if _resource_metrics_cache is not None:
         return _resource_metrics_cache
-
-    from ray.util.metrics import Gauge
 
     metrics = ResourceMetrics(
         active_sessions=Gauge(

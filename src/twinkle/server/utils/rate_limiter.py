@@ -131,11 +131,8 @@ class RateLimiter:
                                      f'Active tokens remaining: {len(self._token_requests)}')
 
                     if self._active_tokens_gauge is not None:
-                        try:
-                            tags = {'deployment': self._deployment_name} if self._deployment_name else {}
-                            self._active_tokens_gauge.set(len(self._token_requests), tags=tags)
-                        except Exception:
-                            pass
+                        tags = {'deployment': self._deployment_name} if self._deployment_name else {}
+                        self._active_tokens_gauge.set(len(self._token_requests), tags=tags)
 
             except asyncio.CancelledError:
                 logger.debug('[RateLimiter] Cleanup task cancelled')
@@ -209,11 +206,8 @@ class RateLimiter:
             # Record this request
             self._token_requests[token].append((current_time, input_tokens))
             if self._active_tokens_gauge is not None:
-                try:
-                    tags = {'deployment': self._deployment_name} if self._deployment_name else {}
-                    self._active_tokens_gauge.set(len(self._token_requests), tags=tags)
-                except Exception:
-                    pass
+                tags = {'deployment': self._deployment_name} if self._deployment_name else {}
+                self._active_tokens_gauge.set(len(self._token_requests), tags=tags)
             return True, None
 
     def get_stats(self, token: str) -> dict[str, Any]:

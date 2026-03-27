@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Coroutine, Deque, Dict, Optional
 
+from twinkle.server.utils.metrics import get_task_metrics
 from twinkle.utils.logger import get_logger
 from .rate_limiter import RateLimiter
 
@@ -172,13 +173,7 @@ class TaskQueueMixin:
 
         # Metrics initialization
         self._deployment_name = deployment_name
-        self._task_metrics = None
-        if deployment_name:
-            try:
-                from twinkle.server.utils.metrics import get_task_metrics
-                self._task_metrics = get_task_metrics(deployment_name)
-            except Exception:
-                logger.debug(f'[TaskQueue] Could not initialize metrics for {deployment_name}')
+        self._task_metrics = get_task_metrics(deployment_name) if deployment_name else None
 
         # Initialize rate limiter for RPS/TPS control
         self._rate_limiter = RateLimiter(
@@ -262,17 +257,15 @@ class TaskQueueMixin:
 
                     # Record queue wait time and update depth gauge
                     if self._task_metrics:
-                        try:
-                            queue_wait = time.monotonic() - task.created_at
-                            task_type_label = task.task_type or 'unknown'
-                            self._task_metrics.queue_wait_seconds.observe(
-                                queue_wait,
-                                tags={'deployment': self._deployment_name, 'task_type': task_type_label})
-                            total_depth = sum(qq.qsize() for qq in self._task_queues.values())
-                            self._task_metrics.queue_depth.set(
-                                total_depth, tags={'deployment': self._deployment_name})
-                        except Exception:
-                            pass
+                        queue_wait = time.monotonic() - task.created_at
+                        task_type_label = task.task_type or 'unknown'
+                        self._task_metrics.queue_wait_seconds.observe(
+                            queue_wait, tags={
+                                'deployment': self._deployment_name,
+                                'task_type': task_type_label
+                            })
+                        total_depth = sum(qq.qsize() for qq in self._task_queues.values())
+                        self._task_metrics.queue_depth.set(total_depth, tags={'deployment': self._deployment_name})
 
                     now = time.monotonic()
 
@@ -291,13 +284,12 @@ class TaskQueueMixin:
                             queue_state_reason=error_payload['error'],
                         )
                         if self._task_metrics:
-                            try:
-                                self._task_metrics.tasks_total.inc(tags={
+                            self._task_metrics.tasks_total.inc(
+                                tags={
                                     'deployment': self._deployment_name,
                                     'task_type': task.task_type or 'unknown',
-                                    'status': 'timeout'})
-                            except Exception:
-                                pass
+                                    'status': 'timeout'
+                                })
                         q.task_done()
                         continue
 
@@ -331,18 +323,19 @@ class TaskQueueMixin:
                     finally:
                         q.task_done()
                         if self._task_metrics:
-                            try:
-                                exec_time = time.monotonic() - exec_start
-                                self._task_metrics.execution_seconds.observe(
-                                    exec_time,
-                                    tags={'deployment': self._deployment_name,
-                                          'task_type': task.task_type or 'unknown'})
-                                self._task_metrics.tasks_total.inc(tags={
+                            exec_time = time.monotonic() - exec_start
+                            self._task_metrics.execution_seconds.observe(
+                                exec_time,
+                                tags={
+                                    'deployment': self._deployment_name,
+                                    'task_type': task.task_type or 'unknown'
+                                })
+                            self._task_metrics.tasks_total.inc(
+                                tags={
                                     'deployment': self._deployment_name,
                                     'task_type': task.task_type or 'unknown',
-                                    'status': task_status})
-                            except Exception:
-                                pass
+                                    'status': task_status
+                                })
 
                     # Keep serial semantics: execute at most one runnable task per loop
                     break
@@ -461,10 +454,7 @@ class TaskQueueMixin:
         allowed, reason = await self._rate_limiter.check_and_record(token, input_tokens)
         if not allowed:
             if self._task_metrics:
-                try:
-                    self._task_metrics.rate_limit_rejections.inc(tags={'deployment': self._deployment_name})
-                except Exception:
-                    pass
+                self._task_metrics.rate_limit_rejections.inc(tags={'deployment': self._deployment_name})
             error_msg = f'Rate limit exceeded: {reason}'
             error_payload = {'error': error_msg, 'category': 'User'}
             await self.state.store_future_status(
@@ -563,11 +553,8 @@ class TaskQueueMixin:
         self._new_task_event.set()
 
         if self._task_metrics:
-            try:
-                total_depth = sum(q.qsize() for q in self._task_queues.values())
-                self._task_metrics.queue_depth.set(total_depth, tags={'deployment': self._deployment_name})
-            except Exception:
-                pass
+            total_depth = sum(q.qsize() for q in self._task_queues.values())
+            self._task_metrics.queue_depth.set(total_depth, tags={'deployment': self._deployment_name})
 
         return {'request_id': request_id, 'model_id': model_id}
 
