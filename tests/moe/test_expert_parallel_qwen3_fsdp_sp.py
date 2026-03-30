@@ -428,6 +428,8 @@ def _run_worker_ep_fsdp_sp_align(
         sp_logits = sp_out.logits.detach()
 
         # Forward alignment (full-seq logits reconstructed by SP gather).
+        max_abs_diff = (sp_logits - base_logits).abs().max().item()
+        print(f'[rank{rank}] fsdp+sp vs fsdp max_abs_diff={max_abs_diff:.6e}')
         assert torch.allclose(sp_logits, base_logits, rtol=1e-3, atol=1e-4)
 
         # Router alignment on this rank's slice: compare selected experts exactly.
@@ -616,6 +618,8 @@ def _run_worker_fsdp_sp_align(
         sp_logits = sp_out.logits.detach()
 
         # Forward alignment (full-seq logits reconstructed by SP gather).
+        max_abs_diff = (sp_logits - base_logits).abs().max().item()
+        print(f'[rank{rank}] ep+fsdp+sp vs ep+fsdp max_abs_diff={max_abs_diff:.6e}')
         assert torch.allclose(sp_logits, base_logits, rtol=1e-3, atol=1e-4)
 
         # Backward alignment: local CE(sum) on SP, compare gathered full-seq inputs_embeds grads.
