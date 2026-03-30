@@ -38,6 +38,7 @@ class SequenceParallel:
         self.rp_world_size = None
         self.dp_world_size = None
         self.world_size = None
+        self.attn_implementation = None
         self.model_dtype = None
         self.tokenizer = None
         self.device_mesh = None
@@ -389,6 +390,7 @@ class SequenceParallel:
         self.seq_world_size = sp_size
         self.sp_world_size, self.rp_world_size = _derive_sequence_parallel_sizes(self.num_heads, self.seq_world_size)
         self.world_size = self.seq_world_size
+        self.attn_implementation = getattr(model.config, '_attn_implementation', None)
 
         llm_model = get_llm_model(model)
 
@@ -661,8 +663,10 @@ class SequenceParallel:
             # so this is not ring-attention
             attention_mask = self.pad(attention_mask, padding_value=0)
             cache_position = torch.arange(0, attn_shape, device=inputs.device)
-            # pad attention mask to 4d to avoid calculation errors
-            if hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None:
+            # FlashAttention2 expects a 2D padding mask (or None). Converting it to a 4D causal mask here breaks
+            # the later per-rank sequence split and changes the attention contract relative to the baseline path.
+            if (hasattr(self, 'causal_mask_func') and self.causal_mask_func is not None
+                    and self.attn_implementation != 'flash_attention_2'):
                 attention_mask = self.causal_mask_func(attention_mask, inputs.to(self.model_dtype), cache_position,
                                                        None, None)
         if extra_split_values is not None:
