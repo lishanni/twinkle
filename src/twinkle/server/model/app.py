@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 import twinkle
 from twinkle import DeviceGroup, DeviceMesh
 from twinkle.server.utils.lifecycle import AdapterManagerMixin
+from twinkle.server.utils.metrics import create_metrics_middleware
 from twinkle.server.utils.state import ServerStateProxy, get_server_state
 from twinkle.server.utils.task_queue import TaskQueueConfig, TaskQueueMixin
 from twinkle.server.utils.validation import get_token_from_request, verify_request_token
@@ -164,7 +165,6 @@ def build_model_app(model_id: str,
     async def verify_token(request: Request, call_next):
         return await verify_request_token(request=request, call_next=call_next)
 
-    from twinkle.server.utils.metrics import create_metrics_middleware
     app.middleware('http')(create_metrics_middleware('Model'))
 
     def get_self() -> ModelManagement:

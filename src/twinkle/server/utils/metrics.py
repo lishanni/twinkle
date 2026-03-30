@@ -17,7 +17,7 @@ Public entry-points:
 from __future__ import annotations
 
 import time
-from collections import namedtuple
+from pydantic import BaseModel
 from ray.util.metrics import Counter, Gauge, Histogram
 from typing import Any, Callable
 
@@ -47,33 +47,57 @@ _HISTOGRAM_BOUNDARIES = [
 # ---------------------------------------------------------------------------
 # Lazy caches – populated on first call per deployment / globally
 # ---------------------------------------------------------------------------
-_task_metrics_cache: dict[str, Any] = {}
-_resource_metrics_cache: dict[str, Any] | None = None
-_request_metrics_cache: dict[str, Any] = {}
+_task_metrics_cache: dict[str, TaskMetrics] = {}
+_resource_metrics_cache: ResourceMetrics | None = None
+_request_metrics_cache: dict[str, _RequestMetrics] = {}
 
 # ---------------------------------------------------------------------------
-# Named tuples for structured metric access
+# Pydantic models for structured metric access
 # ---------------------------------------------------------------------------
-TaskMetrics = namedtuple('TaskMetrics', [
-    'queue_depth',
-    'tasks_total',
-    'execution_seconds',
-    'queue_wait_seconds',
-    'rate_limit_rejections',
-    'rate_limiter_active_tokens',
-])
 
-ResourceMetrics = namedtuple('ResourceMetrics', [
-    'active_sessions',
-    'active_models',
-    'active_sampling_sessions',
-    'active_futures',
-])
 
-_RequestMetrics = namedtuple('_RequestMetrics', [
-    'requests_total',
-    'request_duration_seconds',
-])
+class TaskMetrics(BaseModel):
+    """Task queue metrics container.
+
+    Attributes:
+        queue_depth: Current number of queued tasks.
+        tasks_total: Total task completions.
+        execution_seconds: Pure task execution time in seconds.
+        queue_wait_seconds: Time from enqueue to execution start.
+        rate_limit_rejections: Total rate-limit rejections.
+        rate_limiter_active_tokens: Tokens tracked by rate limiter.
+    """
+
+    queue_depth: Gauge
+    tasks_total: Counter
+    execution_seconds: Histogram
+    queue_wait_seconds: Histogram
+    rate_limit_rejections: Counter
+    rate_limiter_active_tokens: Gauge
+
+
+class ResourceMetrics(BaseModel):
+    """Resource gauge metrics container.
+
+    Attributes:
+        active_sessions: Current active session count.
+        active_models: Current registered model count.
+        active_sampling_sessions: Current sampling session count.
+        active_futures: Current future/request count.
+    """
+
+    active_sessions: Gauge
+    active_models: Gauge
+    active_sampling_sessions: Gauge
+    active_futures: Gauge
+
+
+class _RequestMetrics(BaseModel):
+    """HTTP request metrics container (internal)."""
+
+    requests_total: Counter
+    request_duration_seconds: Histogram
+
 
 # ---------------------------------------------------------------------------
 # A.  Request-level metrics  (FastAPI middleware)
@@ -146,7 +170,7 @@ def create_metrics_middleware(deployment: str) -> Callable:
 def get_task_metrics(deployment: str) -> TaskMetrics:
     """Return (or create) per-deployment task-queue metrics.
 
-    Returns a :class:`TaskMetrics` namedtuple with:
+    Returns a :class:`TaskMetrics` Pydantic model with:
 
     - ``queue_depth``                – Gauge
     - ``tasks_total``                – Counter
@@ -204,7 +228,7 @@ def get_task_metrics(deployment: str) -> TaskMetrics:
 def get_resource_metrics() -> ResourceMetrics:
     """Return (or create) global resource gauge metrics.
 
-    Returns a :class:`ResourceMetrics` namedtuple with:
+    Returns a :class:`ResourceMetrics` Pydantic model with:
 
     - ``active_sessions``           – Gauge
     - ``active_models``             – Gauge

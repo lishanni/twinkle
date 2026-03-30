@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 import twinkle
 from twinkle import DeviceGroup, DeviceMesh, get_logger
 from twinkle.server.utils.lifecycle import ProcessorManagerMixin
+from twinkle.server.utils.metrics import create_metrics_middleware
 from twinkle.server.utils.state import ServerStateProxy, get_server_state
 from twinkle.server.utils.validation import verify_request_token
 from .twinkle_handlers import _register_processor_routes
@@ -124,7 +125,6 @@ def build_processor_app(ncpu_proc_per_node: int,
     async def verify_token(request: Request, call_next):
         return await verify_request_token(request=request, call_next=call_next)
 
-    from twinkle.server.utils.metrics import create_metrics_middleware
     app.middleware('http')(create_metrics_middleware('Processor'))
 
     def get_self() -> ProcessorManagement:
