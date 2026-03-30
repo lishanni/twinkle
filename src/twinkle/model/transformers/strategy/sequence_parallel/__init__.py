@@ -711,8 +711,8 @@ class SequenceParallel:
 
         if position_ids is not None:
             position_ids = self.split(position_ids, dim=-1, position_ids=real_position_ids)
-        if attention_mask is not None and torch.is_tensor(attention_mask) and attention_mask.dim() == 2:
-            attention_mask = self.split(attention_mask, dim=1, position_ids=real_position_ids)
+        # if attention_mask is not None and torch.is_tensor(attention_mask) and attention_mask.dim() == 2:
+        #     attention_mask = self.split(attention_mask, dim=1, position_ids=real_position_ids)
         if extra_split_values is not None:
             for i in range(len(extra_values)):
                 extra_values[i] = self.split(
