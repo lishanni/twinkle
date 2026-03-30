@@ -5,7 +5,7 @@ import torch.distributed as dist
 from copy import copy
 from dataclasses import asdict, dataclass, is_dataclass
 from functools import partial
-from types import MethodType
+from types import MethodType, SimpleNamespace
 from transformers import PreTrainedTokenizer
 from typing import Any, Dict, List, Optional, Tuple, Union
 

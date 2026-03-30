@@ -107,7 +107,7 @@ class Qwen35LinearAttentionSPPatch(Patch):
             raise RuntimeError(
                 'SequenceParallel: Qwen3.5 head-parallel linear attention requires '
                 f'sp_world_size ({sp_world_size}) to divide linear_num_value_heads ({mod.num_v_heads}).'
-            )
+        )
         module_impl = importlib.import_module(mod.__class__.__module__)
         apply_mask_to_padding_states = getattr(module_impl, 'apply_mask_to_padding_states')
         hidden_states = apply_mask_to_padding_states(hidden_states, attention_mask)
@@ -241,7 +241,13 @@ class Qwen35LinearAttentionSPPatch(Patch):
             if cache_params is not None or cache_position is not None:
                 raise NotImplementedError(
                     'Qwen35LinearAttentionSPPatch does not support cached/incremental path when SP is enabled.')
-            return Qwen35LinearAttentionSPPatch._run_head_parallel(sequence_parallel, mod, hidden_states, attention_mask)
+            local_attention_mask = attention_mask
+            if (local_attention_mask is not None and torch.is_tensor(local_attention_mask)
+                    and local_attention_mask.dim() == 2):
+                local_attention_mask = sequence_parallel.split(
+                    local_attention_mask, dim=1, position_ids=sequence_parallel.real_position_ids)
+            return Qwen35LinearAttentionSPPatch._run_head_parallel(
+                sequence_parallel, mod, hidden_states, local_attention_mask)
 
         Qwen3_5GatedDeltaNet.forward = sp_linear_forward
         Qwen3_5GatedDeltaNet._twinkle_sp_linear_patched = True
