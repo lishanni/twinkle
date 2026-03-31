@@ -45,6 +45,8 @@ _HAS_FLA_PREFILL = bool(_HAS_QWEN35 and getattr(hf_qwen35, 'causal_conv1d_fn', N
 
 # CUDA_VISIBLE_DEVICES=0,1 \
 # pytest -q tests/transformers/test_qwen35_linear_attention_sp.py::TestQwen35LinearAttentionSP::test_qwen35_linear_attention_packed_forward_alignment -rs -s
+# CUDA_VISIBLE_DEVICES=0,1 \
+# pytest -q tests/transformers/test_qwen35_linear_attention_sp.py::TestQwen35LinearAttentionSP::test_qwen35_linear_attention_cache_decode_alignment -rs -s
 
 def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -315,6 +317,7 @@ def _run_cache_decode_alignment_worker(rank: int, world_size: int, port: int):
             use_cache=True,
             past_key_values=baseline_cache,
             cache_position=prefill_cache_position,
+            output_hidden_states=True,
         )
         baseline_prefill_logits = baseline_prefill.logits.float()
         baseline_decode = baseline_model(
@@ -324,6 +327,7 @@ def _run_cache_decode_alignment_worker(rank: int, world_size: int, port: int):
             use_cache=True,
             past_key_values=baseline_prefill.past_key_values,
             cache_position=decode_cache_position,
+            output_hidden_states=True,
         )
         baseline_decode_logits = baseline_decode.logits.float()
 
@@ -336,12 +340,19 @@ def _run_cache_decode_alignment_worker(rank: int, world_size: int, port: int):
             use_cache=True,
             past_key_values=sp_cache,
             cache_position=prefill_cache_position,
+            output_hidden_states=True,
         )
         sp_prefill = strategy.postprocess_outputs(sp_prefill)
         sp_prefill_logits = sp_prefill.logits.float()
         if not torch.allclose(sp_prefill_logits, baseline_prefill_logits, rtol=LOGITS_RTOL, atol=LOGITS_ATOL):
             max_diff = (sp_prefill_logits - baseline_prefill_logits).abs().max().item()
             raise AssertionError(f'prefill logits mismatch on rank {rank}: max_diff={max_diff}')
+        for layer_idx, (sp_hidden, base_hidden) in enumerate(
+                zip(sp_prefill.hidden_states, baseline_prefill.hidden_states)):
+            if not torch.allclose(sp_hidden.float(), base_hidden.float(), rtol=LOGITS_RTOL, atol=LOGITS_ATOL):
+                max_diff = (sp_hidden.float() - base_hidden.float()).abs().max().item()
+                raise AssertionError(
+                    f'prefill hidden_states mismatch on rank {rank} layer={layer_idx}: max_diff={max_diff}')
 
         sp_cache = sp_prefill.past_key_values
         if sp_cache is None:
@@ -358,9 +369,16 @@ def _run_cache_decode_alignment_worker(rank: int, world_size: int, port: int):
             use_cache=True,
             past_key_values=sp_cache,
             cache_position=decode_cache_position,
+            output_hidden_states=True,
         )
         sp_decode = strategy.postprocess_outputs(sp_decode)
         sp_decode_logits = sp_decode.logits.float()
+        for layer_idx, (sp_hidden, base_hidden) in enumerate(
+                zip(sp_decode.hidden_states, baseline_decode.hidden_states)):
+            if not torch.allclose(sp_hidden.float(), base_hidden.float(), rtol=LOGITS_RTOL, atol=LOGITS_ATOL):
+                max_diff = (sp_hidden.float() - base_hidden.float()).abs().max().item()
+                raise AssertionError(
+                    f'decode hidden_states mismatch on rank {rank} layer={layer_idx}: max_diff={max_diff}')
         if not torch.allclose(sp_decode_logits, baseline_decode_logits, rtol=LOGITS_RTOL, atol=LOGITS_ATOL):
             max_diff = (sp_decode_logits - baseline_decode_logits).abs().max().item()
             raise AssertionError(f'decode logits mismatch on rank {rank}: max_diff={max_diff}')
