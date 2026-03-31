@@ -252,7 +252,7 @@ def _run_forward_grad_alignment_worker(rank: int, world_size: int, port: int):
             position_ids=position_ids,
             use_cache=False,
         )
-        gathered_outputs = strategy.postprocess_outputs(copy(sp_outputs))
+        gathered_outputs = strategy.postprocess_outputs(copy.copy(sp_outputs))
         gathered_logits = gathered_outputs.logits.float()
         if not torch.allclose(gathered_logits, baseline_logits, rtol=LOGITS_RTOL, atol=LOGITS_ATOL):
             max_diff = (gathered_logits - baseline_logits).abs().max().item()
