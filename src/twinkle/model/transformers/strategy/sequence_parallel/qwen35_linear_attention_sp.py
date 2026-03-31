@@ -321,7 +321,6 @@ class Qwen35LinearAttentionSPPatch(Patch):
             q_proj = seq_to_head_shard(q_proj, sequence_parallel_context)
             k_proj = seq_to_head_shard(k_proj, sequence_parallel_context)
             v_proj = seq_to_head_shard(v_proj, sequence_parallel_context)
-            z = seq_to_head_shard(z, sequence_parallel_context)
             b = seq_to_head_shard(b.reshape(batch_size, seq_len, mod.num_v_heads, 1), sequence_parallel_context).squeeze(-1)
             a = seq_to_head_shard(a.reshape(batch_size, seq_len, mod.num_v_heads, 1), sequence_parallel_context).squeeze(-1)
             seq_after_shard = q_proj.shape[1]

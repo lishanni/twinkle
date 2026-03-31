@@ -27,9 +27,9 @@ except Exception:
 
 
 WORLD_SIZE = 2
-LOGITS_RTOL = 1e-1
-LOGITS_ATOL = 1e-1
-LOSS_ATOL = 1e-1
+LOGITS_RTOL = 5e-2
+LOGITS_ATOL = 5e-2
+LOSS_ATOL = 5e-2
 GRAD_RTOL = 1e-1
 GRAD_ATOL = 5e-2
 _HAS_FLA_PREFILL = bool(_HAS_QWEN35 and getattr(hf_qwen35, 'causal_conv1d_fn', None) is not None)
@@ -205,7 +205,8 @@ def _run_forward_grad_alignment_worker(rank: int, world_size: int, port: int):
         _set_determinism(1234)
         os.environ['QWEN35_SP_LINEAR_HEAD_PARALLEL'] = '1'
 
-        baseline_model = _build_tiny_qwen35(device, layer_types=['linear_attention', 'full_attention'], use_cache=False)
+        baseline_model = _build_tiny_qwen35(
+            device, layer_types=['linear_attention', 'linear_attention'], use_cache=False)
         sp_model = copy.deepcopy(baseline_model)
         input_ids, attention_mask, position_ids, labels = _make_train_batch(device)
 
@@ -256,7 +257,8 @@ def _run_cache_decode_alignment_worker(rank: int, world_size: int, port: int):
         _set_determinism(4321)
         os.environ['QWEN35_SP_LINEAR_HEAD_PARALLEL'] = '1'
 
-        baseline_model = _build_tiny_qwen35(device, layer_types=['linear_attention', 'full_attention'], use_cache=True)
+        baseline_model = _build_tiny_qwen35(
+            device, layer_types=['linear_attention', 'linear_attention'], use_cache=True)
         sp_model = copy.deepcopy(baseline_model)
         (input_ids, attention_mask, position_ids, next_input_ids, next_attention_mask, next_position_ids,
          cache_position) = _make_decode_batch(device)
