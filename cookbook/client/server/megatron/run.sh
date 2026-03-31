@@ -4,8 +4,22 @@
 # Twinkle Megatron 服务启动脚本
 # ============================================
 # 功能：启动 Ray 集群（支持多 GPU/CPU 节点）、Prometheus 监控和 Twinkle 服务器
-# 用法：./run.sh [TEMP_DIR]
-# 示例：./run.sh /tmp/twinkle_ray_logs
+# 
+# 用法：./run.sh [选项]
+# 
+# 选项：
+#   --head NODE          Head 节点 GPU 配置，格式 "设备列表:数量" (默认: 0,1,2,3:4)
+#   --gpu-workers LIST   GPU Worker 列表，分号分隔多个节点 (默认: 4,5,6,7:4)
+#   --cpu-workers N      CPU Worker 数量 (默认: 1)
+#   --temp-dir DIR       Ray 临时目录 (默认: /dashscope/caches/application/ray_logs)
+#   --help               显示帮助信息
+# 
+# 示例：
+#   ./run.sh                                    # 使用默认配置
+#   ./run.sh --head "0,1,2,3" --gpu-workers "4,5,6,7" --cpu-workers 1
+#   ./run.sh --head "0,1,2,3" --gpu-workers "" --cpu-workers 0
+#   ./run.sh --head "" --cpu-workers 4          # 纯 CPU 模式
+#   ./run.sh --temp-dir /tmp/my_ray_logs        # 自定义临时目录
 # ============================================
 
 set -e  # 遇到错误立即退出
@@ -18,17 +32,15 @@ set -e  # 遇到错误立即退出
 # Head 节点（必须是第一个启动）
 # 格式："GPU设备列表:GPU数量"，如 "0,1,2,3:4"
 # 如果不需要 GPU，设为空字符串 ""
-HEAD_NODE="0,1,2,3:4"
+# 可通过命令行参数 $1 传入
 
 # GPU Worker 节点列表（可以有多个）
-# 格式：每个元素为 "GPU设备列表:GPU数量"
-# 示例：("4,5,6,7:4" "8,9,10,11:4") 表示两个 GPU worker 节点
-# 如果没有 GPU worker，设为空数组 ()
-GPU_WORKERS=("4,5,6,7:4")
+# 格式：用分号分隔的 "GPU设备列表:GPU数量"
+# 示例："4,5,6,7:4" 或 "4,5,6,7:4;8,9,10,11:4"
+# 可通过命令行参数 $2 传入
 
 # CPU Worker 数量
-# 启动指定数量的纯 CPU worker 节点
-CPU_WORKER_COUNT=1
+# 可通过命令行参数 $3 传入
 
 # --- 网络配置 ---
 RAY_PORT=6379
@@ -47,9 +59,83 @@ export RAY_ROTATION_MAX_BYTES=1024
 export RAY_ROTATION_BACKUP_COUNT=1
 
 # ============================================
-# 参数解析
+# 参数解析（支持 --key=value 或 --key value 格式）
 # ============================================
-TEMP_DIR="${1:-$DEFAULT_TEMP_DIR}"
+
+# 默认值
+HEAD_NODE="0,1,2,3"
+GPU_WORKERS_INPUT="4,5,6,7"
+CPU_WORKER_COUNT="1"
+TEMP_DIR="$DEFAULT_TEMP_DIR"
+
+# 解析命名参数
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --head)
+            HEAD_NODE="$2"
+            shift 2
+            ;;
+        --head=*)
+            HEAD_NODE="${1#*=}"
+            shift
+            ;;
+        --gpu-workers)
+            GPU_WORKERS_INPUT="$2"
+            shift 2
+            ;;
+        --gpu-workers=*)
+            GPU_WORKERS_INPUT="${1#*=}"
+            shift
+            ;;
+        --cpu-workers)
+            CPU_WORKER_COUNT="$2"
+            shift 2
+            ;;
+        --cpu-workers=*)
+            CPU_WORKER_COUNT="${1#*=}"
+            shift
+            ;;
+        --temp-dir)
+            TEMP_DIR="$2"
+            shift 2
+            ;;
+        --temp-dir=*)
+            TEMP_DIR="${1#*=}"
+            shift
+            ;;
+        --help|-h)
+            echo "用法: ./run.sh [选项]"
+            echo ""
+            echo "选项:"
+            echo "  --head NODE          Head 节点 GPU 设备列表，逗号分隔 (默认: 0,1,2,3)"
+            echo "  --gpu-workers LIST   GPU Worker 列表，分号分隔多个节点 (默认: 4,5,6,7)"
+            echo "  --cpu-workers N      CPU Worker 数量 (默认: 1)"
+            echo "  --temp-dir DIR       Ray 临时目录"
+            echo "  --help, -h           显示帮助信息"
+            echo ""
+            echo "示例:"
+            echo "  ./run.sh                                      # 默认配置"
+            echo "  ./run.sh --head '0,1,2,3' --gpu-workers '4,5,6,7'"
+            echo "  ./run.sh --head '0,1,2,3,4,5,6,7'             # 单机 8 卡"
+            echo "  ./run.sh --gpu-workers '4,5,6,7;8,9,10,11'    # 多 GPU Worker"
+            echo "  ./run.sh --cpu-workers 4 --head ''            # 纯 CPU 模式"
+            exit 0
+            ;;
+        *)
+            print_error "未知参数: $1"
+            echo "使用 --help 查看帮助"
+            exit 1
+            ;;
+    esac
+done
+
+# 将分号分隔的字符串转为数组
+if [ -z "$GPU_WORKERS_INPUT" ]; then
+    GPU_WORKERS=()
+else
+    IFS=';' read -ra GPU_WORKERS <<< "$GPU_WORKERS_INPUT"
+fi
+
 PROMETHEUS_CONFIG="${TEMP_DIR}/${PROMETHEUS_CONFIG_SUFFIX}"
 
 # ============================================
@@ -82,7 +168,8 @@ print_header() {
     print_separator
 }
 
-# 解析节点配置 "devices:count" -> 返回 devices 和设置 _gpu_count
+# 解析节点配置 "devices" -> 返回 devices 和自动计算 _gpu_count
+# 示例: "0,1,2,3" -> devices="0,1,2,3", count=4
 parse_node_config() {
     local config="$1"
     if [ -z "$config" ]; then
@@ -90,8 +177,10 @@ parse_node_config() {
         _gpu_count=0
         return
     fi
-    _gpu_devices="${config%%:*}"
-    _gpu_count="${config##*:}"
+    _gpu_devices="$config"
+    # 通过逗号数量+1计算 GPU 数量
+    local comma_count=$(echo "$config" | tr -cd ',' | wc -c)
+    _gpu_count=$((comma_count + 1))
 }
 
 # ============================================

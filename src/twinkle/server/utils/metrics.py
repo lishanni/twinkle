@@ -17,7 +17,7 @@ Public entry-points:
 from __future__ import annotations
 
 import time
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ray.util.metrics import Counter, Gauge, Histogram
 from typing import Any, Callable
 
@@ -68,6 +68,8 @@ class TaskMetrics(BaseModel):
         rate_limiter_active_tokens: Tokens tracked by rate limiter.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     queue_depth: Gauge
     tasks_total: Counter
     execution_seconds: Histogram
@@ -86,6 +88,8 @@ class ResourceMetrics(BaseModel):
         active_futures: Current future/request count.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     active_sessions: Gauge
     active_models: Gauge
     active_sampling_sessions: Gauge
@@ -94,6 +98,8 @@ class ResourceMetrics(BaseModel):
 
 class _RequestMetrics(BaseModel):
     """HTTP request metrics container (internal)."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     requests_total: Counter
     request_duration_seconds: Histogram
