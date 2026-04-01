@@ -210,16 +210,17 @@ class SequenceParallel:
                             position_ids = kwargs.get('position_ids')
                             if position_ids is None:
                                 position_ids = self.real_position_ids
-                            pos = position_ids
-                            if pos.dim() == 1:
-                                pos = pos.unsqueeze(0)
-                            pos = pos.clone()
-                            pos[pos < 0] = 0
-                            cu_seqlens = get_cu_seqlens_from_position_ids(pos).to(torch.int32)
+                            position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
+                            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
                         else:
                             cu_seqlens = cu_seqlens.to(dtype=torch.int32, device=query.device)
                         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
-                        assert query.shape[2] == cu_seqlens[-1]
+                        total_tokens = int(cu_seqlens[-1].item())
+                        if query.shape[2] != total_tokens:
+                            raise ValueError(
+                                'Packed/varlen flash_attention_2 expects query sequence length to match '
+                                f'cu_seqlens total tokens, got query_seq_len={query.shape[2]} '
+                                f'and cu_seqlens_total={total_tokens}.')
                         kwargs['cu_seq_lens_q'] = cu_seqlens
                         kwargs['cu_seq_lens_k'] = cu_seqlens
                         kwargs['max_length_q'] = max_seqlen
