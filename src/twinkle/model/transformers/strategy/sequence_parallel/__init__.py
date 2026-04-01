@@ -582,12 +582,18 @@ class SequenceParallel:
             return full_output.contiguous()
 
         if self.sp_world_size > 1:
-            gathered_sp = torch.empty(
-                [local_output.shape[0] * self.sp_world_size] + list(local_output.shape[1:]),
-                dtype=local_output.dtype,
-                device=local_output.device)
-            dist.all_gather_into_tensor(gathered_sp, local_output, group=self._sp_group)
-            gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
+            sp_backend = dist.get_backend(self._sp_group) if self._sp_group is not None else None
+            if sp_backend == 'hccl':
+                gathered_sp_chunks = [torch.zeros_like(local_output) for _ in range(self.sp_world_size)]
+                dist.all_gather(gathered_sp_chunks, local_output.contiguous(), group=self._sp_group)
+                gathered_sp = torch.cat(gathered_sp_chunks, dim=dim)
+            else:
+                gathered_sp = torch.empty(
+                    [local_output.shape[0] * self.sp_world_size] + list(local_output.shape[1:]),
+                    dtype=local_output.dtype,
+                    device=local_output.device)
+                dist.all_gather_into_tensor(gathered_sp, local_output, group=self._sp_group)
+                gathered_sp = torch.cat(gathered_sp.split(local_output.shape[0], dim=0), dim=dim)
             return gathered_sp.contiguous()
         return local_output
 
