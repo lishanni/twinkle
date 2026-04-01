@@ -201,6 +201,19 @@ def _normalize_grad_dict(grads: dict[str, torch.Tensor], num_tokens: int) -> dic
     return {name: grad / denom for name, grad in grads.items()}
 
 
+def _average_model_grads_over_group(model: LlamaForCausalLM, group: dist.ProcessGroup | None) -> None:
+    if group is None:
+        return
+    group_world_size = dist.get_world_size(group)
+    if group_world_size <= 1:
+        return
+    for param in model.parameters():
+        if param.grad is None:
+            continue
+        dist.all_reduce(param.grad, group=group)
+        param.grad.div_(group_world_size)
+
+
 def _collect_attention_param_grads(model: LlamaForCausalLM) -> dict[str, torch.Tensor]:
     grads = {}
     for name, param in model.named_parameters():
@@ -377,6 +390,7 @@ def _run_precision_worker(rank: int, world_size: int, port: int, case_name: str)
         sp_loss_sum, sp_num_tokens = _compute_training_path_loss(local_logits, local_labels, strategy)
         sp_loss_sum.backward()
         global_loss = sp_loss_sum / max(sp_num_tokens, 1)
+        _average_model_grads_over_group(sp_model, sequence_parallel._data_rank_group)
         sp_attention_grads = _normalize_grad_dict(_collect_attention_param_grads(sp_model), sp_num_tokens)
 
         if sp_num_tokens != base_num_tokens:
