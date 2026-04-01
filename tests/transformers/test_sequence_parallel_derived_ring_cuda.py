@@ -10,12 +10,12 @@ from types import SimpleNamespace
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-import torch.nn.functional as F
 from transformers import LlamaConfig, LlamaForCausalLM
 from transformers.modeling_flash_attention_utils import is_flash_attn_available
 
+from twinkle.loss import CrossEntropyLoss
 from twinkle.model.transformers.strategy.sequence_parallel import SequenceParallelStrategy, sequence_parallel
-from twinkle.utils import DeviceMesh
+from twinkle.utils import DeviceMesh, selective_log_softmax
 
 LOGITS_RTOL = 1e-2
 LOGITS_ATOL = 5e-3
@@ -177,44 +177,28 @@ def _prepare_label_inputs(strategy: SequenceParallelStrategy, input_ids: torch.T
     return processed['labels']
 
 
-def _reduce_local_loss_like_old_strategy(
-    strategy: SequenceParallelStrategy,
-    local_loss: torch.Tensor,
-    local_labels: torch.Tensor,
-    ignore_index: int = -100,
-) -> torch.Tensor:
-    if not strategy.enabled or strategy.ulysses_size <= 1:
-        return local_loss
-    if local_labels is None or sequence_parallel._data_rank_group is None:
-        return local_loss
+def _compute_training_path_loss(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    strategy: SequenceParallelStrategy | None = None,
+) -> tuple[torch.Tensor, int]:
+    masked_labels = labels.masked_fill(labels == -100, 0)
+    loss_inputs = {'labels': labels}
+    loss_outputs = {'logps': selective_log_softmax(logits, masked_labels)}
+    if strategy is not None:
+        loss_inputs, loss_outputs = strategy.gather_loss_tensors(loss_inputs, loss_outputs)
+    result = CrossEntropyLoss(reduction='sum')(loss_inputs, loss_outputs)
+    num_tokens = result['num_tokens']
+    if torch.is_tensor(num_tokens):
+        num_tokens = int(num_tokens.item())
+    else:
+        num_tokens = int(num_tokens)
+    return result['loss'], num_tokens
 
-    class _ReduceSequenceParallelLoss(torch.autograd.Function):
 
-        @staticmethod
-        def forward(ctx, local_mean: torch.Tensor, num_valid_tokens: torch.Tensor) -> torch.Tensor:
-            local_tokens = num_valid_tokens.detach().clone()
-            local_sum = local_mean * local_tokens
-            if local_tokens.item() == 0:
-                local_sum = torch.nan_to_num(local_sum)
-            global_sum = local_sum.detach().clone()
-            dist.all_reduce(global_sum, group=sequence_parallel._data_rank_group)
-            global_tokens = num_valid_tokens.detach().clone()
-            dist.all_reduce(global_tokens, group=sequence_parallel._data_rank_group)
-            ctx.save_for_backward(local_tokens, global_tokens)
-            if global_tokens.item() == 0:
-                return local_sum
-            return global_sum / global_tokens
-
-        @staticmethod
-        def backward(ctx, grad_output: torch.Tensor):
-            local_tokens, global_tokens = ctx.saved_tensors
-            if global_tokens.item() == 0:
-                return torch.zeros_like(grad_output), None
-            grad_local_mean = grad_output * (local_tokens / global_tokens)
-            return grad_local_mean, None
-
-    num_valid_tokens = (local_labels != ignore_index).sum().to(local_loss.device)
-    return _ReduceSequenceParallelLoss.apply(local_loss, num_valid_tokens)
+def _normalize_grad_dict(grads: dict[str, torch.Tensor], num_tokens: int) -> dict[str, torch.Tensor]:
+    denom = float(max(num_tokens, 1))
+    return {name: grad / denom for name, grad in grads.items()}
 
 
 def _collect_attention_param_grads(model: LlamaForCausalLM) -> dict[str, torch.Tensor]:
@@ -290,14 +274,8 @@ def _measure_peak_memory(
         use_cache=False,
     )
     local_logits = outputs.logits
-    local_loss = F.cross_entropy(
-        local_logits.float().view(-1, local_logits.size(-1)),
-        local_labels.view(-1),
-        ignore_index=-100,
-        reduction='mean',
-    )
-    global_loss = _reduce_local_loss_like_old_strategy(strategy, local_loss, local_labels)
-    global_loss.backward()
+    loss_sum, _ = _compute_training_path_loss(local_logits, local_labels, strategy)
+    loss_sum.backward()
     torch.cuda.synchronize(device)
 
     peak = torch.tensor([int(torch.cuda.max_memory_allocated(device))], device=device)
@@ -371,14 +349,10 @@ def _run_precision_worker(rank: int, world_size: int, port: int, case_name: str)
             use_cache=False,
         )
         base_logits = base_outputs.logits.detach().float()
-        base_loss = F.cross_entropy(
-            base_outputs.logits.float().view(-1, base_outputs.logits.size(-1)),
-            labels.view(-1),
-            ignore_index=-100,
-            reduction='mean',
-        )
-        base_loss.backward()
-        base_attention_grads = _collect_attention_param_grads(base_model)
+        base_loss_sum, base_num_tokens = _compute_training_path_loss(base_outputs.logits, labels)
+        base_loss_sum.backward()
+        base_loss = base_loss_sum / max(base_num_tokens, 1)
+        base_attention_grads = _normalize_grad_dict(_collect_attention_param_grads(base_model), base_num_tokens)
 
         device_mesh = DeviceMesh.from_sizes(
             fsdp_size=world_size,
@@ -400,15 +374,14 @@ def _run_precision_worker(rank: int, world_size: int, port: int, case_name: str)
         gathered_outputs = strategy.postprocess_outputs(sp_outputs)
         sp_logits = gathered_outputs.logits.detach().float()
 
-        local_loss = F.cross_entropy(
-            local_logits.float().view(-1, local_logits.size(-1)),
-            local_labels.view(-1),
-            ignore_index=-100,
-            reduction='mean',
-        )
-        global_loss = _reduce_local_loss_like_old_strategy(strategy, local_loss, local_labels)
-        global_loss.backward()
-        sp_attention_grads = _collect_attention_param_grads(sp_model)
+        sp_loss_sum, sp_num_tokens = _compute_training_path_loss(local_logits, local_labels, strategy)
+        sp_loss_sum.backward()
+        global_loss = sp_loss_sum / max(sp_num_tokens, 1)
+        sp_attention_grads = _normalize_grad_dict(_collect_attention_param_grads(sp_model), sp_num_tokens)
+
+        if sp_num_tokens != base_num_tokens:
+            raise AssertionError(
+                f'{case_name} num_tokens mismatch on rank {rank}: sp={sp_num_tokens} base={base_num_tokens}')
 
         if not torch.allclose(sp_logits[:, :seq_len], base_logits, rtol=LOGITS_RTOL, atol=LOGITS_ATOL):
             diff = (sp_logits[:, :seq_len] - base_logits).abs().max().item()
