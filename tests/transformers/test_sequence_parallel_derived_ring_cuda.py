@@ -185,14 +185,36 @@ def _reduce_local_loss_like_old_strategy(
 ) -> torch.Tensor:
     if not strategy.enabled or strategy.ulysses_size <= 1:
         return local_loss
-    if local_labels is None or sequence_parallel._sp_group is None:
+    if local_labels is None or sequence_parallel._data_rank_group is None:
         return local_loss
 
+    class _ReduceSequenceParallelLoss(torch.autograd.Function):
+
+        @staticmethod
+        def forward(ctx, local_mean: torch.Tensor, num_valid_tokens: torch.Tensor) -> torch.Tensor:
+            local_tokens = num_valid_tokens.detach().clone()
+            local_sum = local_mean * local_tokens
+            if local_tokens.item() == 0:
+                local_sum = torch.nan_to_num(local_sum)
+            global_sum = local_sum.detach().clone()
+            dist.all_reduce(global_sum, group=sequence_parallel._data_rank_group)
+            global_tokens = num_valid_tokens.detach().clone()
+            dist.all_reduce(global_tokens, group=sequence_parallel._data_rank_group)
+            ctx.save_for_backward(local_tokens, global_tokens)
+            if global_tokens.item() == 0:
+                return local_sum
+            return global_sum / global_tokens
+
+        @staticmethod
+        def backward(ctx, grad_output: torch.Tensor):
+            local_tokens, global_tokens = ctx.saved_tensors
+            if global_tokens.item() == 0:
+                return torch.zeros_like(grad_output), None
+            grad_local_mean = grad_output * (local_tokens / global_tokens)
+            return grad_local_mean, None
+
     num_valid_tokens = (local_labels != ignore_index).sum().to(local_loss.device)
-    reduced_loss = local_loss * num_valid_tokens
-    dist.all_reduce(reduced_loss, group=sequence_parallel._sp_group)
-    dist.all_reduce(num_valid_tokens, group=sequence_parallel._sp_group)
-    return reduced_loss / num_valid_tokens.clamp(min=1)
+    return _ReduceSequenceParallelLoss.apply(local_loss, num_valid_tokens)
 
 
 def _collect_attention_param_grads(model: LlamaForCausalLM) -> dict[str, torch.Tensor]:
