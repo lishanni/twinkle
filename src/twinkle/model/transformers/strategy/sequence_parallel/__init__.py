@@ -455,8 +455,8 @@ class SequenceParallel:
         if not SequenceParallel._global_inited:
             # these operations are global initializations and patches
             self._prepare_flash_attn(llm_model)
-            self._prepare_qwen35_linear_attention(model)
             SequenceParallel._global_inited = True
+        self._prepare_qwen35_linear_attention(model)
 
         self._prepare_forward_hook(llm_model)
         self._prepare_multimodal_deepstack(llm_model)
