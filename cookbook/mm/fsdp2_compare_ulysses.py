@@ -78,6 +78,7 @@ def _build_model(device_mesh: DeviceMesh) -> TransformersModel:
     model.model._no_split_modules = {'Qwen3_5DecoderLayer'}
     lora_config = LoraConfig(r=8, lora_alpha=32, target_modules='all-linear')
     model.add_adapter_to_model('default', lora_config, gradient_accumulation_steps=1)
+    model.set_optimizer(optimizer_cls='AdamW', lr=1e-4, adapter_name='default')
     return model
 
 
