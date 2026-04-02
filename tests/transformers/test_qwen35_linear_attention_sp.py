@@ -10,6 +10,7 @@ import unittest
 from datetime import timedelta
 from types import SimpleNamespace
 from transformers.modeling_flash_attention_utils import is_flash_attn_available
+from transformers.utils.import_utils import is_flash_linear_attention_available
 
 from twinkle.loss import CrossEntropyLoss
 from twinkle.model.transformers.strategy.sequence_parallel import SequenceParallelStrategy, sequence_parallel
@@ -32,7 +33,10 @@ LOGITS_ATOL = 5e-2
 LOSS_ATOL = 5e-2
 GRAD_RTOL = 1e-1
 GRAD_ATOL = 5e-2
-_HAS_FLA_PREFILL = bool(_HAS_QWEN35 and getattr(hf_qwen35, 'causal_conv1d_fn', None) is not None)
+_HAS_FLA_PREFILL = bool(
+    _HAS_QWEN35 and (
+        getattr(hf_qwen35, 'causal_conv1d_fn', None) is not None or is_flash_linear_attention_available()
+    ))
 
 
 def _find_free_port() -> int:
@@ -161,7 +165,11 @@ def _make_train_batch(device: torch.device):
 
 
 def _get_qkv_weight(model: Qwen3_5ForCausalLM) -> torch.nn.Parameter:
-    return model.model.layers[0].linear_attn.in_proj_qkv.weight
+    for layer in model.model.layers:
+        linear_attn = getattr(layer, 'linear_attn', None)
+        if linear_attn is not None:
+            return linear_attn.in_proj_qkv.weight
+    raise AssertionError('No linear attention layer found in Qwen3.5 test model.')
 
 
 def _allreduce_sp_grad(grad: torch.Tensor) -> torch.Tensor:
@@ -247,7 +255,9 @@ def _run_prefill_alignment_worker(rank: int,
 
 @unittest.skipUnless(_HAS_QWEN35, 'transformers Qwen3.5 is not available in this environment')
 @unittest.skipUnless(torch.cuda.is_available() and torch.cuda.device_count() >= WORLD_SIZE, 'requires 2 CUDA devices')
-@unittest.skipUnless(_HAS_FLA_PREFILL, 'requires flash-linear-attention causal_conv1d_fn for Qwen3.5 SP patch')
+@unittest.skipUnless(
+    _HAS_FLA_PREFILL,
+    'requires either transformers qwen3.5 causal_conv1d_fn or flash-linear-attention kernels for Qwen3.5 SP patch')
 class TestQwen35LinearAttentionSP(unittest.TestCase):
 
     def test_qwen35_linear_attention_prefill_logits_and_qkv_grad_alignment(self):

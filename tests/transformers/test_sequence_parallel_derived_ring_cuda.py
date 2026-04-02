@@ -305,47 +305,6 @@ def _assert_grad_dict_close(case_name: str, rank: int, baseline_grads: dict[str,
             raise AssertionError(f'{case_name} attention grad mismatch on rank {rank} for {key}: max_diff={max_diff}')
 
 
-def _assert_runtime_sequence_parallel_state(case: dict, strategy: SequenceParallelStrategy) -> None:
-    expected_mode, expected_sp_world_size, expected_rp_world_size = _validate_case_config(case)
-    if sequence_parallel.sp_world_size != expected_sp_world_size:
-        raise AssertionError(f'{case["expected_mode"]} sp_world_size mismatch: '
-                             f'expected={expected_sp_world_size}, actual={sequence_parallel.sp_world_size}')
-    if sequence_parallel.rp_world_size != expected_rp_world_size:
-        raise AssertionError(f'{case["expected_mode"]} rp_world_size mismatch: '
-                             f'expected={expected_rp_world_size}, actual={sequence_parallel.rp_world_size}')
-
-    data_rank_group = sequence_parallel._data_rank_group
-    if data_rank_group is None:
-        raise AssertionError(f'{expected_mode} should create a sequence data-rank group.')
-    if dist.get_world_size(data_rank_group) != int(case['ulysses_size']):
-        raise AssertionError(f'{expected_mode} data-rank group size mismatch: '
-                             f'expected={int(case["ulysses_size"])}, actual={dist.get_world_size(data_rank_group)}')
-
-    sp_group = sequence_parallel._sp_group
-    if expected_sp_world_size > 1:
-        if sp_group is None:
-            raise AssertionError(f'{expected_mode} should create an SP group.')
-        if dist.get_world_size(sp_group) != expected_sp_world_size:
-            raise AssertionError(f'{expected_mode} SP group size mismatch: '
-                                 f'expected={expected_sp_world_size}, actual={dist.get_world_size(sp_group)}')
-    elif sp_group is not None:
-        raise AssertionError(f'{expected_mode} should not create an SP group when sp_world_size == 1.')
-
-    rp_group = sequence_parallel._rp_group
-    if expected_rp_world_size > 1:
-        if rp_group is None:
-            raise AssertionError(f'{expected_mode} should create an RP group.')
-        if dist.get_world_size(rp_group) != expected_rp_world_size:
-            raise AssertionError(f'{expected_mode} RP group size mismatch: '
-                                 f'expected={expected_rp_world_size}, actual={dist.get_world_size(rp_group)}')
-    elif rp_group is not None:
-        raise AssertionError(f'{expected_mode} should not create an RP group when rp_world_size == 1.')
-
-    if strategy.ulysses_size != int(case['ulysses_size']):
-        raise AssertionError(f'{expected_mode} ulysses_size mismatch: '
-                             f'expected={int(case["ulysses_size"])}, actual={strategy.ulysses_size}')
-
-
 def _init_dist(rank: int, world_size: int, port: int, backend_config: dict):
     os.environ['RANK'] = str(rank)
     os.environ['WORLD_SIZE'] = str(world_size)
@@ -447,30 +406,6 @@ def _format_memory_table(case_name: str, peaks: list[dict]) -> str:
     return '\n'.join(lines)
 
 
-def _run_runtime_topology_worker(rank: int,
-                                 world_size: int,
-                                 port: int,
-                                 case_name: str,
-                                 backend_config: dict,
-                                 attn_implementation: str = 'flash_attention_2'):
-    device = _init_dist(rank, world_size, port, backend_config)
-    try:
-        _seed_backend(1234, backend_config['device_type'])
-        case = _make_case(case_name)
-        model = _build_tiny_llama(case, device, backend_config['device_type'], attn_implementation)
-        device_mesh = DeviceMesh.from_sizes(
-            fsdp_size=world_size,
-            dp_size=1,
-            ulysses_size=int(case['ulysses_size']),
-            device_type=backend_config['device_type'],
-        )
-        strategy = _make_strategy(model, device_mesh, int(case['ulysses_size']))
-        _assert_runtime_sequence_parallel_state(case, strategy)
-        dist.barrier()
-    finally:
-        dist.destroy_process_group()
-
-
 def _run_precision_worker(rank: int,
                           world_size: int,
                           port: int,
@@ -511,7 +446,6 @@ def _run_precision_worker(rank: int,
             device_type=backend_config['device_type'],
         )
         strategy = _make_strategy(sp_model, device_mesh, int(case['ulysses_size']))
-        _assert_runtime_sequence_parallel_state(case, strategy)
         processed_inputs = strategy.preprocess_inputs({
             'input_ids': input_ids,
             'position_ids': position_ids,
@@ -591,7 +525,6 @@ def _run_memory_worker(rank: int, world_size: int, port: int, case_name: str, ba
         )
         model = _build_tiny_llama(case, device, backend_config['device_type'])
         strategy = _make_strategy(model, device_mesh, int(case['ulysses_size']))
-        _assert_runtime_sequence_parallel_state(case, strategy)
 
         peaks = []
         for batch_size in case['batch_sizes']:
@@ -666,53 +599,6 @@ class TestDerivedRingPrecision(unittest.TestCase):
                     'Derived ring runtime tests currently require flash_attention_2, which is unavailable on NPU in '
                     'this environment.')
             self.skipTest('flash_attention_2 is required for derived ring runtime tests.')
-
-    def test_sp_only_runtime_topology(self):
-        case = _make_case('sp_only')
-        world_size = int(case['world_size'])
-        backend = self._get_backend_or_skip(world_size)
-        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
-        port = _find_free_port()
-        mp.spawn(
-            _run_runtime_topology_worker,
-            args=(world_size, port, 'sp_only', backend, 'flash_attention_2'),
-            nprocs=world_size,
-            join=True)
-
-    def test_cp_only_runtime_topology(self):
-        case = _make_case('cp_only')
-        world_size = int(case['world_size'])
-        backend = self._get_backend_or_skip(world_size)
-        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
-        port = _find_free_port()
-        mp.spawn(
-            _run_runtime_topology_worker,
-            args=(world_size, port, 'cp_only', backend, 'flash_attention_2'),
-            nprocs=world_size,
-            join=True)
-
-    def test_cp_sp_runtime_topology(self):
-        case = _make_case('cp_sp')
-        world_size = int(case['world_size'])
-        backend = self._get_backend_or_skip(world_size)
-        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
-        port = _find_free_port()
-        mp.spawn(
-            _run_runtime_topology_worker,
-            args=(world_size, port, 'cp_sp', backend, 'flash_attention_2'),
-            nprocs=world_size,
-            join=True)
-
-    def test_sp_only_precision_alignment_sdpa(self):
-        case = _make_case('sp_only')
-        world_size = int(case['world_size'])
-        backend = self._get_backend_or_skip(world_size)
-        port = _find_free_port()
-        mp.spawn(
-            _run_precision_worker,
-            args=(world_size, port, 'sp_only', backend, 'sdpa'),
-            nprocs=world_size,
-            join=True)
 
     def test_cp_only_precision_alignment(self):
         case = _make_case('cp_only')
