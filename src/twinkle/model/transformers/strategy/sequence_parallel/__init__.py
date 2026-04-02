@@ -121,10 +121,13 @@ class SequenceParallel:
                                                                                                      cache_position,
                                                                                                      kv_length, *args,
                                                                                                      **kwargs)
-                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
-                                                                                                 cache_position,
-                                                                                                 kv_length, *args,
-                                                                                                 **kwargs)
+                device = cache_position.device
+                cache_position = self.real_position_ids[0]
+                cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
+                cache_position = torch.arange(0, cache_position.shape[0], device=device)
+                kv_length = cache_position.shape[0]
+                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](
+                    batch_size, cache_position, kv_length, *args, **kwargs)
 
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping[
                 'sdpa_origin'] = masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa']
@@ -743,23 +746,6 @@ class SequenceParallel:
         if input_embeds is not None:
             input_embeds = self.split(input_embeds, dim=1, position_ids=real_position_ids)
         if labels is not None:
-            if self.extra_kwargs.get('is_packed', False) and real_position_ids is not None:
-                # PackingDataset + padding_free collate concatenates multiple sequences into a single token stream.
-                # `position_ids` resets to 0 at each boundary, but our labels are already next-token aligned by
-                # Template._roll_labels(). Therefore the cross-subsequence supervision term lives at the *previous*
-                # token index (the token right before a boundary start).
-                #
-                # Example (boundary at index b where position_ids[b] == 0):
-                # - Bad term is: token[b-1] predicting token[b]
-                # - In next-token-aligned labels, this appears at labels[b-1]
-                boundary_starts = (real_position_ids == 0)
-                prev = torch.zeros_like(boundary_starts, dtype=torch.bool)
-                # Mask token b-1 when boundary starts at b.
-                prev[..., :-1] = boundary_starts[..., 1:]
-                labels = labels.clone()
-                labels[prev] = -100
-                # Also avoid any potential wrap-around supervision at the end of the concatenated stream.
-                labels[..., -1] = -100
             labels = self.split(labels, dim=-1, position_ids=real_position_ids)
         if loss_scale is not None:
             loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1)

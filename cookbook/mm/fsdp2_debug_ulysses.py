@@ -161,6 +161,23 @@ def _capture_processor_summary(model: TransformersModel, batch: dict[str, Any]) 
     return _summarize_model_inputs(processed)
 
 
+def _capture_local_label_summary(model: TransformersModel, batch: dict[str, Any]) -> dict[str, Any]:
+    optimizer_config = model.optimizer_group[model._get_default_group()]
+    processor = optimizer_config.processor
+    processed = processor(batch, sp_strategy=model.sp_strategy)
+    labels = processed.get('labels')
+    if labels is None:
+        return {'has_labels': False}
+    local_labels = model.sp_strategy.prepare_local_labels(labels, processed.get('position_ids'))
+    return {
+        'has_labels': True,
+        'full_labels': _tensor_summary(labels),
+        'full_non_ignore': int((labels != -100).sum().item()),
+        'local_labels': _tensor_summary(local_labels),
+        'local_non_ignore': int((local_labels != -100).sum().item()),
+    }
+
+
 def eval(model):
     dataset = LazyDataset(dataset_meta=DatasetMeta(DATASET_ID, data_slice=range(100)))
     dataset.set_template('Qwen3_5Template', model_id=MODEL_ID)
@@ -200,6 +217,7 @@ def train():
         if step in DEBUG_STEPS:
             logger.info(f'DEBUG batch_summary step={step}: {_summarize_batch(batch)}')
             logger.info(f'DEBUG processor_outputs step={step}: {_capture_processor_summary(model, batch)}')
+            logger.info(f'DEBUG local_labels step={step}: {_capture_local_label_summary(model, batch)}')
             logger.info(f'DEBUG layer0_linear_attn step={step}: {_capture_layer0_linear_attn_summary(model, batch)}')
 
         model.forward_backward(inputs=batch)
