@@ -181,7 +181,10 @@ def _seed_backend(seed: int, device_type: str) -> None:
         torch.npu.manual_seed_all(seed)
 
 
-def _build_tiny_llama(case: dict, device: torch.device, device_type: str) -> LlamaForCausalLM:
+def _build_tiny_llama(case: dict,
+                      device: torch.device,
+                      device_type: str,
+                      attn_implementation: str = 'flash_attention_2') -> LlamaForCausalLM:
     _validate_case_config(case)
     hidden_size = int(case['hidden_size'])
     num_heads = int(case['num_attention_heads'])
@@ -203,7 +206,7 @@ def _build_tiny_llama(case: dict, device: torch.device, device_type: str) -> Lla
         eos_token_id=2,
         use_cache=False,
     )
-    config._attn_implementation = 'flash_attention_2'
+    config._attn_implementation = attn_implementation
     model = LlamaForCausalLM(config)
     model.to(device=device, dtype=dtype)
     model.eval()
@@ -444,12 +447,17 @@ def _format_memory_table(case_name: str, peaks: list[dict]) -> str:
     return '\n'.join(lines)
 
 
-def _run_runtime_topology_worker(rank: int, world_size: int, port: int, case_name: str, backend_config: dict):
+def _run_runtime_topology_worker(rank: int,
+                                 world_size: int,
+                                 port: int,
+                                 case_name: str,
+                                 backend_config: dict,
+                                 attn_implementation: str = 'flash_attention_2'):
     device = _init_dist(rank, world_size, port, backend_config)
     try:
         _seed_backend(1234, backend_config['device_type'])
         case = _make_case(case_name)
-        model = _build_tiny_llama(case, device, backend_config['device_type'])
+        model = _build_tiny_llama(case, device, backend_config['device_type'], attn_implementation)
         device_mesh = DeviceMesh.from_sizes(
             fsdp_size=world_size,
             dp_size=1,
@@ -463,14 +471,19 @@ def _run_runtime_topology_worker(rank: int, world_size: int, port: int, case_nam
         dist.destroy_process_group()
 
 
-def _run_precision_worker(rank: int, world_size: int, port: int, case_name: str, backend_config: dict):
+def _run_precision_worker(rank: int,
+                          world_size: int,
+                          port: int,
+                          case_name: str,
+                          backend_config: dict,
+                          attn_implementation: str = 'flash_attention_2'):
     device = _init_dist(rank, world_size, port, backend_config)
     try:
         _seed_backend(1234, backend_config['device_type'])
         case = _make_case(case_name)
 
-        base_model = _build_tiny_llama(case, device, backend_config['device_type'])
-        sp_model = _build_tiny_llama(case, device, backend_config['device_type'])
+        base_model = _build_tiny_llama(case, device, backend_config['device_type'], attn_implementation)
+        sp_model = _build_tiny_llama(case, device, backend_config['device_type'], attn_implementation)
         sp_model.load_state_dict(base_model.state_dict())
 
         seq_len = int(case['seq_len'])
@@ -639,50 +652,86 @@ class TestDerivedRingPrecision(unittest.TestCase):
             self.skipTest('CUDA or NPU is required for derived ring runtime tests.')
         if backend['device_count'] < world_size:
             self.skipTest(f'Requires at least {world_size} {backend["label"]} devices.')
-        if not is_flash_attn_available():
+        return backend
+
+    def _require_attn_impl_or_skip(self, backend: dict, attn_implementation: str) -> None:
+        if attn_implementation == 'flash_attention_2' and not is_flash_attn_available():
             if backend['device_type'] == 'npu':
                 self.skipTest(
                     'Derived ring runtime tests currently require flash_attention_2, which is unavailable on NPU in '
                     'this environment.')
             self.skipTest('flash_attention_2 is required for derived ring runtime tests.')
-        return backend
 
     def test_sp_only_runtime_topology(self):
         case = _make_case('sp_only')
         world_size = int(case['world_size'])
         backend = self._get_backend_or_skip(world_size)
+        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
         port = _find_free_port()
         mp.spawn(
-            _run_runtime_topology_worker, args=(world_size, port, 'sp_only', backend), nprocs=world_size, join=True)
+            _run_runtime_topology_worker,
+            args=(world_size, port, 'sp_only', backend, 'flash_attention_2'),
+            nprocs=world_size,
+            join=True)
 
     def test_cp_only_runtime_topology(self):
         case = _make_case('cp_only')
         world_size = int(case['world_size'])
         backend = self._get_backend_or_skip(world_size)
+        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
         port = _find_free_port()
         mp.spawn(
-            _run_runtime_topology_worker, args=(world_size, port, 'cp_only', backend), nprocs=world_size, join=True)
+            _run_runtime_topology_worker,
+            args=(world_size, port, 'cp_only', backend, 'flash_attention_2'),
+            nprocs=world_size,
+            join=True)
 
     def test_cp_sp_runtime_topology(self):
         case = _make_case('cp_sp')
         world_size = int(case['world_size'])
         backend = self._get_backend_or_skip(world_size)
+        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
         port = _find_free_port()
-        mp.spawn(_run_runtime_topology_worker, args=(world_size, port, 'cp_sp', backend), nprocs=world_size, join=True)
+        mp.spawn(
+            _run_runtime_topology_worker,
+            args=(world_size, port, 'cp_sp', backend, 'flash_attention_2'),
+            nprocs=world_size,
+            join=True)
+
+    def test_sp_only_precision_alignment_sdpa(self):
+        case = _make_case('sp_only')
+        world_size = int(case['world_size'])
+        backend = self._get_backend_or_skip(world_size)
+        port = _find_free_port()
+        mp.spawn(
+            _run_precision_worker,
+            args=(world_size, port, 'sp_only', backend, 'sdpa'),
+            nprocs=world_size,
+            join=True)
 
     def test_cp_only_precision_alignment(self):
         case = _make_case('cp_only')
         world_size = int(case['world_size'])
         backend = self._get_backend_or_skip(world_size)
+        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
         port = _find_free_port()
-        mp.spawn(_run_precision_worker, args=(world_size, port, 'cp_only', backend), nprocs=world_size, join=True)
+        mp.spawn(
+            _run_precision_worker,
+            args=(world_size, port, 'cp_only', backend, 'flash_attention_2'),
+            nprocs=world_size,
+            join=True)
 
     def test_cp_sp_precision_alignment(self):
         case = _make_case('cp_sp')
         world_size = int(case['world_size'])
         backend = self._get_backend_or_skip(world_size)
+        self._require_attn_impl_or_skip(backend, 'flash_attention_2')
         port = _find_free_port()
-        mp.spawn(_run_precision_worker, args=(world_size, port, 'cp_sp', backend), nprocs=world_size, join=True)
+        mp.spawn(
+            _run_precision_worker,
+            args=(world_size, port, 'cp_sp', backend, 'flash_attention_2'),
+            nprocs=world_size,
+            join=True)
 
 
 class TestDerivedRingMemoryProfile(unittest.TestCase):

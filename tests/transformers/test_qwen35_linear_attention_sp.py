@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import unittest
 from datetime import timedelta
 from types import SimpleNamespace
+from transformers.modeling_flash_attention_utils import is_flash_attn_available
 
 from twinkle.loss import CrossEntropyLoss
 from twinkle.model.transformers.strategy.sequence_parallel import SequenceParallelStrategy, sequence_parallel
@@ -77,7 +78,12 @@ def _model_dtype() -> torch.dtype:
     return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
 
 
-def _build_tiny_qwen35(device: torch.device) -> Qwen3_5ForCausalLM:
+def _build_tiny_qwen35(device: torch.device,
+                       *,
+                       attn_implementation: str = 'sdpa',
+                       layer_types: list[str] | None = None) -> Qwen3_5ForCausalLM:
+    if layer_types is None:
+        layer_types = ['linear_attention', 'linear_attention']
     config = Qwen3_5TextConfig(
         vocab_size=128,
         hidden_size=64,
@@ -91,14 +97,14 @@ def _build_tiny_qwen35(device: torch.device) -> Qwen3_5ForCausalLM:
         linear_value_head_dim=16,
         linear_num_key_heads=2,
         linear_num_value_heads=4,
-        layer_types=['linear_attention', 'linear_attention'],
+        layer_types=layer_types,
         pad_token_id=0,
         bos_token_id=1,
         eos_token_id=2,
         attention_dropout=0.0,
         use_cache=False,
     )
-    config._attn_implementation = 'sdpa'
+    config._attn_implementation = attn_implementation
     model = Qwen3_5ForCausalLM(config)
     model.to(device=device, dtype=_model_dtype())
     model.eval()
@@ -165,13 +171,18 @@ def _allreduce_sp_grad(grad: torch.Tensor) -> torch.Tensor:
     return reduced
 
 
-def _run_prefill_alignment_worker(rank: int, world_size: int, port: int):
+def _run_prefill_alignment_worker(rank: int,
+                                  world_size: int,
+                                  port: int,
+                                  attn_implementation: str = 'sdpa',
+                                  layer_types: list[str] | None = None):
     device = _init_dist(rank, world_size, port)
     try:
         _set_determinism(1234)
         os.environ['QWEN35_SP_LINEAR_HEAD_PARALLEL'] = '1'
 
-        baseline_model = _build_tiny_qwen35(device)
+        baseline_model = _build_tiny_qwen35(
+            device, attn_implementation=attn_implementation, layer_types=layer_types)
         sp_model = copy.deepcopy(baseline_model)
         input_ids, attention_mask, position_ids, labels = _make_train_batch(device)
 
@@ -243,7 +254,36 @@ class TestQwen35LinearAttentionSP(unittest.TestCase):
         port = _find_free_port()
         mp.spawn(
             _run_prefill_alignment_worker,
-            args=(WORLD_SIZE, port),
+            args=(WORLD_SIZE, port, 'sdpa', ['linear_attention', 'linear_attention']),
+            nprocs=WORLD_SIZE,
+            join=True,
+        )
+
+    def test_qwen35_mixed_attention_prefill_logits_and_qkv_grad_alignment(self):
+        port = _find_free_port()
+        mp.spawn(
+            _run_prefill_alignment_worker,
+            args=(WORLD_SIZE, port, 'sdpa', ['full_attention', 'linear_attention']),
+            nprocs=WORLD_SIZE,
+            join=True,
+        )
+
+    @unittest.skipUnless(is_flash_attn_available(), 'requires flash_attention_2 support in transformers')
+    def test_qwen35_linear_attention_prefill_logits_and_qkv_grad_alignment_fa2(self):
+        port = _find_free_port()
+        mp.spawn(
+            _run_prefill_alignment_worker,
+            args=(WORLD_SIZE, port, 'flash_attention_2', ['linear_attention', 'linear_attention']),
+            nprocs=WORLD_SIZE,
+            join=True,
+        )
+
+    @unittest.skipUnless(is_flash_attn_available(), 'requires flash_attention_2 support in transformers')
+    def test_qwen35_mixed_attention_prefill_logits_and_qkv_grad_alignment_fa2(self):
+        port = _find_free_port()
+        mp.spawn(
+            _run_prefill_alignment_worker,
+            args=(WORLD_SIZE, port, 'flash_attention_2', ['full_attention', 'linear_attention']),
             nprocs=WORLD_SIZE,
             join=True,
         )
