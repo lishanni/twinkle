@@ -23,6 +23,7 @@ class PackedSeqParams:
 class InputProcessor:
     padding_map = {
         'input_ids': 0,
+        'mm_token_type_ids': 0,
         'inputs_embeds': 0.0,
         'attention_mask': 0,
         'labels': -100,
