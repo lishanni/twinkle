@@ -6,15 +6,15 @@ RUN curl -O https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.s
     rm Miniconda3-latest-Linux-x86_64.sh
 ENV PATH="/opt/conda/bin:${PATH}"
 RUN conda create -n twinkle python=3.12 -y --override-channels -c conda-forge
-SHELL ["conda", "run", "-n", "twinkle", "/bin/bash", "-c"]
+ENV PATH="/opt/conda/envs/twinkle/bin:${PATH}"
 
 # Clone and install twinkle, checkout to latest v-tag
 RUN git clone https://github.com/modelscope/twinkle.git
 WORKDIR /twinkle
-RUN echo "Available v-tags:" && git tag -l 'v*' --sort=-v:refname && \
-    LATEST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -n 1) && \
-    echo "Checking out: $LATEST_TAG" && \
-    git checkout "$LATEST_TAG"
+RUN echo "Available release branches:" && git branch -r -l 'origin/release/*' --sort=-v:refname && \
+    LATEST_RELEASE=$(git branch -r -l 'origin/release/*' --sort=-v:refname | head -n 1 | tr -d ' ') && \
+    echo "Checking out: $LATEST_RELEASE" && \
+    git checkout --track "$LATEST_RELEASE"
 
 RUN sh INSTALL_MEGATRON.sh
 

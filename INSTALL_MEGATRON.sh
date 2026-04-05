@@ -87,11 +87,6 @@ pip install flash-linear-attention -U
 echo ""
 echo "Installing numpy==2.2 and deep_gemm..."
 pip install numpy==2.2
-pip uninstall deep_gemm -y
-cd /tmp
-git clone --recursive https://github.com/deepseek-ai/DeepGEMM.git
-cd DeepGEMM
-pip install . --no-build-isolation
 
 # Verify installation
 echo ""
