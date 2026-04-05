@@ -95,7 +95,7 @@ echo ""
 python -c "
 import pkg_resources
 
-packages = ['peft', 'accelerate', 'transformers', 'modelscope', 'oss2', 'vllm', 'transformer_engine', 'megatron_core', 'flash_attn', 'numpy']
+packages = ['peft', 'accelerate', 'transformers', 'modelscope', 'vllm', 'transformer_engine', 'megatron_core', 'flash_attn', 'numpy']
 
 print('Installed package versions:')
 print('-' * 40)
