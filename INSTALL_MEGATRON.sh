@@ -71,7 +71,9 @@ echo "Site-packages path: $SITE_PACKAGES"
 
 CUDNN_PATH=$SITE_PACKAGES/nvidia/cudnn \
 CPLUS_INCLUDE_PATH=$SITE_PACKAGES/nvidia/cudnn/include \
-pip install --no-build-isolation "transformer_engine[pytorch]" megatron_core --no-cache-dir
+pip install --no-build-isolation "transformer_engine[pytorch]" --no-cache-dir
+
+pip install megatron_core mcore_bridge --no-cache-dir
 
 # Install flash-attention (force local build)
 echo ""
