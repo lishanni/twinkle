@@ -21,6 +21,3 @@ RUN sh INSTALL_MEGATRON.sh
 RUN pip install --no-cache-dir tinker==0.14.0 "ray[serve]" transformers peft accelerate -U
 
 RUN pip install -e . --no-build-isolation
-
-ENV TWINKLE_WORKDIR=/data
-CMD ["bash", "-c", "mkdir -p $TWINKLE_WORKDIR && cd $TWINKLE_WORKDIR && bash /twinkle/cookbook/client/server/megatron/run.sh 2>&1 | tee $TWINKLE_WORKDIR/run.log"]
