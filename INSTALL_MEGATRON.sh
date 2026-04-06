@@ -4,7 +4,7 @@
 # which always occur error
 
 set -e  # Exit immediately on error
-
+export SETUPTOOLS_USE_DISTUTILS=local
 echo "=========================================="
 echo "Starting deep learning dependencies installation..."
 echo "=========================================="
