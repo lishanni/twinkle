@@ -46,7 +46,12 @@ def _register_tinker_routes(app: FastAPI, self_fn: Callable[[], ModelManagement]
                     adapter_name = self.get_adapter_name(adapter_name=_model_id)
                     self.register_resource(adapter_name, token, session_id=body.session_id)
                     self.model.add_adapter_to_model(adapter_name=adapter_name, config_or_dir=lora_cfg)
-                    self.model.set_template('Template', adapter_name=adapter_name, model_id=self.base_model)
+                    # For Qwen3.5, use Qwen3_5Template
+                    if 'Qwen3.5' in self.base_model:
+                        template = 'Qwen3_5Template'
+                    else:
+                        template = 'Template'
+                    self.model.set_template(template, adapter_name=adapter_name, model_id=self.base_model)
                     self.model.set_processor('InputProcessor', adapter_name=adapter_name)
                     self.model.set_optimizer('Adam', adapter_name=adapter_name)
                     self.set_resource_state(adapter_name, 'grad_ready', False)
@@ -111,12 +116,12 @@ def _register_tinker_routes(app: FastAPI, self_fn: Callable[[], ModelManagement]
                 self.assert_resource_exists(adapter_name)
                 datum_list = body.forward_input.data
                 loss_fn_config = body.forward_input.loss_fn_config or {}
-                output = self.model.tinker_forward_only(inputs=datum_list, adapter_name=adapter_name)
-                loss = self.model.calculate_loss(adapter_name=adapter_name, **loss_fn_config)
+                output, loss = self.model.tinker_forward_only(
+                    inputs=datum_list, adapter_name=adapter_name, **loss_fn_config)
                 return types.ForwardBackwardOutput(
                     loss_fn_output_type='CrossEntropyLossReturn',
                     loss_fn_outputs=output,
-                    metrics={'loss:sum': loss},
+                    metrics={'loss:avg': loss},
                 )
             except Exception:
                 logger.error(traceback.format_exc())

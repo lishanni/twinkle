@@ -31,19 +31,23 @@ class TwinkleCompatTransformersModel(MultiLoraTransformersModel, TwinkleCompatMo
     # Tinker-compat methods (Datum-based I/O)
     # ------------------------------------------------------------------
 
-    @remote_function(dispatch='slice_dp', collect='flatten')
-    def tinker_forward_only(self, *, inputs: List[types.Datum], **kwargs):
-        template = self.get_template(**kwargs)
-        input_features = datum_to_input_feature(inputs, template)
-        outputs = super().forward_only(inputs=input_features, **kwargs)
+    def _tinker_build_output(self, inputs, outputs, detach_logits_to_cpu: bool = True):
+        """Extract logits/logps from model outputs and build per-datum output list."""
         logits = outputs.get('logits')
         if logits is not None:
-            logits = logits.detach().cpu()
+            logits = logits.detach().cpu() if detach_logits_to_cpu else logits.detach()
         logps = outputs.get('logps', None)
         if logps is not None:
             logps = logps.detach().cpu()
-        results = self._get_forward_output(inputs, logits, logps)
-        return results
+        return self._get_forward_output(inputs, logits, logps)
+
+    @remote_function(dispatch='slice_dp', collect=collect_forward_backward_results)
+    def tinker_forward_only(self, *, inputs: List[types.Datum], adapter_name: str = None, **kwargs):
+        template = self.get_template(adapter_name)
+        input_features = datum_to_input_feature(inputs, template)
+        outputs = super().forward_only(inputs=input_features, adapter_name=adapter_name, **kwargs)
+        results = self._tinker_build_output(inputs, outputs)
+        return [results, 0.0]
 
     @remote_function(dispatch='slice_dp', collect=collect_forward_backward_results)
     def tinker_forward_backward(self, *, inputs: List[types.Datum], adapter_name: str, loss_fn: str, **kwargs):
@@ -62,7 +66,6 @@ class TwinkleCompatTransformersModel(MultiLoraTransformersModel, TwinkleCompatMo
                 super().add_metric('DPOMetric', adapter_name=adapter_name, beta=beta)
             else:
                 # GRPO mode: read optional GRPO params from loss_fn_config kwargs
-                # Also pop DPO-specific kwargs to prevent leaking into forward/backward
                 epsilon = kwargs.pop('epsilon', 0.2)
                 grpo_beta = kwargs.pop('beta', 0.0)
                 super().set_loss('GRPOLoss', adapter_name=adapter_name, epsilon=epsilon, beta=grpo_beta)
@@ -75,27 +78,25 @@ class TwinkleCompatTransformersModel(MultiLoraTransformersModel, TwinkleCompatMo
         loss_kwargs = kwargs.copy()
         # Convert ref_logps list-of-lists into a padded tensor wrapped in ref_outputs
         # so that DPOLoss and DPOMetric can consume it via ref_outputs.get('logps').
-        # if 'ref_logps' in loss_values:
-        #     import torch
-        #     import torch.nn.functional as F
-        #     ref_logps_lists = loss_values.pop('ref_logps')
-        #     max_len = max(len(r) for r in ref_logps_lists)
-        #     padded = [
-        #         F.pad(torch.tensor(r, dtype=torch.float32), (0, max_len - len(r)))
-        #         for r in ref_logps_lists
-        #     ]
-        #     ref_logps_tensor = torch.stack(padded)  # [batch, max_seq_len]
-        #     loss_kwargs['ref_outputs'] = {'logps': ref_logps_tensor}
+        if 'ref_logps' in loss_values:
+            import torch
+            import torch.nn.functional as F
+            ref_logps_lists = loss_values.pop('ref_logps')
+            max_len = max(len(r) for r in ref_logps_lists)
+            padded = [
+                F.pad(torch.tensor(r, dtype=torch.float32), (0, max_len - len(r)))
+                for r in ref_logps_lists
+            ]
+            ref_logps_tensor = torch.stack(padded)  # [batch, max_seq_len]
+            ref_outputs_dict = {'logps': ref_logps_tensor}
+            loss_kwargs['ref_outputs'] = ref_outputs_dict
+            # Propagate to train_status.forward_kwargs so DPOMetric.accumulate
+            # gets ref_outputs on the next forward() call (where accumulate_metrics runs).
+            self.optimizer_group[adapter_name].train_status.forward_kwargs['ref_outputs'] = ref_outputs_dict
         loss_kwargs.update(loss_values)
         loss = super().calculate_loss(adapter_name=adapter_name, **loss_kwargs)
         super().backward(adapter_name=adapter_name, **kwargs)
-        logits = outputs.get('logits')
-        if logits is not None:
-            logits = logits.detach()
-        logps = outputs.get('logps', None)
-        if logps is not None:
-            logps = logps.detach().cpu()
-        results = self._get_forward_output(inputs, logits, logps)
+        results = self._tinker_build_output(inputs, outputs, detach_logits_to_cpu=False)
         return [results, loss]
 
     @remote_function()

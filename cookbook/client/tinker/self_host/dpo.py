@@ -45,7 +45,6 @@ batch_size = 4
 learning_rate = 1e-4
 dpo_beta = 0.1
 sft_weight = 1.0
-loss_type = 'sigmoid'
 max_length = 2048
 lora_rank = 8
 system_prompt = 'You are a helpful assistant.'
@@ -57,7 +56,7 @@ system_prompt = 'You are a helpful assistant.'
 
 def create_dpo_dataset():
     """Create DPO dataset with positive/negative format."""
-    dataset = Dataset(DatasetMeta(dataset_id, data_slice=range(600)))
+    dataset = Dataset(DatasetMeta(dataset_id, data_slice=range(500)))
     dataset.set_template('Qwen3_5Template', model_id=f'ms://{base_model}', max_length=max_length)
     dataset.map(
         EmojiDPOProcessor,
@@ -106,7 +105,7 @@ def train():
         rank=lora_rank,
     )
     logger.info(f'LoRA training client created (rank={lora_rank})')
-    logger.info(f'Starting DPO training: loss_type={loss_type}, beta={dpo_beta}, lr={learning_rate}')
+    logger.info(f'Starting DPO training: beta={dpo_beta}, lr={learning_rate}')
 
     # Step 3: Training loop
     for step, batch in tqdm(enumerate(dataloader), total=len(dataloader)):
@@ -129,7 +128,7 @@ def train():
         #    LoRA weights are outside the computation graph → backward
         #    produces zero LoRA gradients, so this call is safe.
         # -----------------------------------------------------------------
-        ref_result = training_client.forward_backward(
+        ref_result = training_client.forward(
             input_datums,
             'cross_entropy',
             loss_fn_config={'disable_lora': True},
@@ -152,7 +151,6 @@ def train():
             'importance_sampling',
             loss_fn_config={
                 'dpo_beta': dpo_beta,
-                'dpo_loss_type': loss_type,
                 'dpo_sft_weight': sft_weight,
             },
         ).result()
@@ -165,8 +163,7 @@ def train():
             types.AdamParams(learning_rate=learning_rate)
         ).result()
 
-        dpo_loss = fwdbwd_result.metrics.get('loss:avg', 'N/A')
-        logger.info(f'[Step {step}] dpo_loss={dpo_loss} | metrics={optim_result.metrics}')
+        logger.info(f'[Step {step}] metrics={optim_result.metrics}')
 
     # Step 4: Save checkpoint
     save_result = training_client.save_state('dpo-lora-final').result()
