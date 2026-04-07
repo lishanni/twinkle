@@ -128,6 +128,57 @@ class TwinkleCompatModelBase:
     def get_template(self, adapter_name: str) -> Template:
         return self.optimizer_group[adapter_name].template
 
+    def _tinker_setup_loss(self, loss_fn: str, inputs, adapter_name: str, kwargs: dict):
+        """Set up loss function based on loss_fn; pops DPO/GRPO-specific params from kwargs in-place."""
+        if loss_fn == 'cross_entropy':
+            self.set_loss('CrossEntropyLoss', adapter_name=adapter_name)
+        elif loss_fn == 'importance_sampling':
+            has_ref_logps = any('ref_logps' in d.loss_fn_inputs for d in inputs)
+            if has_ref_logps:
+                beta = kwargs.pop('dpo_beta', 0.1)
+                loss_type = kwargs.pop('dpo_loss_type', 'sigmoid')
+                sft_weight = kwargs.pop('dpo_sft_weight', 0.0)
+                self.set_loss(
+                    'DPOLoss', adapter_name=adapter_name, beta=beta, loss_type=loss_type, sft_weight=sft_weight)
+                self.add_metric('DPOMetric', adapter_name=adapter_name, beta=beta)
+            else:
+                epsilon = kwargs.pop('epsilon', 0.2)
+                grpo_beta = kwargs.pop('beta', 0.0)
+                self.set_loss('GRPOLoss', adapter_name=adapter_name, epsilon=epsilon, beta=grpo_beta)
+        else:
+            self.set_loss('CrossEntropyLoss', adapter_name=adapter_name)
+
+    def _tinker_build_output(self, inputs, outputs, detach_logits_to_cpu: bool = True):
+        """Extract logits/logps from model outputs and build per-datum output list."""
+        logits = outputs.get('logits')
+        if logits is not None:
+            if isinstance(logits, list) and len(logits) > 0:
+                logits = torch.cat(
+                    [logit.detach().cpu() if detach_logits_to_cpu else logit.detach() for logit in logits], dim=0)
+            else:
+                logits = logits.detach().cpu() if detach_logits_to_cpu else logits.detach()
+        logps = outputs.get('logps', None)
+        if logps is not None:
+            logps = logps.detach().cpu()
+        return self._get_forward_output(inputs, logits, logps)
+
+    @staticmethod
+    def _tinker_prepare_ref_outputs(loss_values: dict, loss_kwargs: dict):
+        """Convert ref_logps list-of-lists into a padded tensor and inject into loss_kwargs.
+
+        Returns the ref_outputs dict (or None if ref_logps not present), so callers
+        can optionally propagate it to train_status.forward_kwargs.
+        """
+        if 'ref_logps' not in loss_values:
+            return None
+        import torch.nn.functional as F
+        ref_logps_lists = loss_values.pop('ref_logps')
+        max_len = max(len(r) for r in ref_logps_lists)
+        padded = [F.pad(torch.tensor(r, dtype=torch.float32), (0, max_len - len(r))) for r in ref_logps_lists]
+        ref_outputs_dict = {'logps': torch.stack(padded)}
+        loss_kwargs['ref_outputs'] = ref_outputs_dict
+        return ref_outputs_dict
+
     @staticmethod
     def _get_forward_output(inputs: List[types.Datum], logits: torch.Tensor, logps: torch.Tensor) -> List[dict]:
         """Convert raw logits to the expected output format with logprobs and elementwise_loss."""
