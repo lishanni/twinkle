@@ -56,7 +56,7 @@ system_prompt = 'You are a helpful assistant.'
 
 def create_dpo_dataset():
     """Create DPO dataset with positive/negative format."""
-    dataset = Dataset(DatasetMeta(dataset_id, data_slice=range(500)))
+    dataset = Dataset(DatasetMeta(dataset_id, data_slice=range(100)))
     dataset.set_template('Qwen3_5Template', model_id=f'ms://{base_model}', max_length=max_length)
     dataset.map(
         EmojiDPOProcessor,

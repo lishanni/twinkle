@@ -57,7 +57,7 @@ class TwinkleCompatTransformersModel(MultiLoraTransformersModel, TwinkleCompatMo
         loss_kwargs.update(loss_values)
         loss = super().calculate_loss(adapter_name=adapter_name, **loss_kwargs)
         super().backward(adapter_name=adapter_name, **kwargs)
-        results = self._tinker_build_output(inputs, outputs, detach_logits_to_cpu=False)
+        results = self._tinker_build_output(inputs, outputs)
         return [results, loss]
 
     @remote_function()

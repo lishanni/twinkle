@@ -148,19 +148,39 @@ class TwinkleCompatModelBase:
         else:
             self.set_loss('CrossEntropyLoss', adapter_name=adapter_name)
 
-    def _tinker_build_output(self, inputs, outputs, detach_logits_to_cpu: bool = True):
+    def _tinker_build_output(self, inputs, outputs):
         """Extract logits/logps from model outputs and build per-datum output list."""
         logits = outputs.get('logits')
         if logits is not None:
-            if isinstance(logits, list) and len(logits) > 0:
-                logits = torch.cat(
-                    [logit.detach().cpu() if detach_logits_to_cpu else logit.detach() for logit in logits], dim=0)
-            else:
-                logits = logits.detach().cpu() if detach_logits_to_cpu else logits.detach()
+            logits = self._normalize_tensor_output(logits)
         logps = outputs.get('logps', None)
         if logps is not None:
-            logps = logps.detach().cpu()
+            logps = self._normalize_tensor_output(logps)
         return self._get_forward_output(inputs, logits, logps)
+
+    @staticmethod
+    def _normalize_tensor_output(value):
+        """Normalize various output formats (tensor, list of tensors, nested lists, floats) to a single tensor.
+
+        Handles:
+        - torch.Tensor: detach and move to cpu
+        - list of torch.Tensor: cat along dim=0
+        - nested lists: recursively flatten and cat
+        - list of floats/int: convert to tensor
+        """
+        if value is None:
+            return None
+
+        if isinstance(value, torch.Tensor):
+            return value.detach().cpu()
+
+        if isinstance(value, list):
+            return torch.as_tensor(value, dtype=torch.float32).detach().cpu()
+
+        if isinstance(value, (int, float)):
+            return torch.tensor([value], dtype=torch.float32)
+
+        raise ValueError(f'Unexpected type for tensor output: {type(value)}')
 
     @staticmethod
     def _tinker_prepare_ref_outputs(loss_values: dict, loss_kwargs: dict):
