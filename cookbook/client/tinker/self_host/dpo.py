@@ -145,6 +145,7 @@ def train():
         # C. DPO forward_backward
         #    Server detects ref_logps → sets DPOLoss + DPOMetric automatically.
         #    Optional DPO hyper-params can be forwarded via loss_fn_config.
+        #    (e.g. beta, sft_weight, not support dpo_loss_type for tinker)
         # -----------------------------------------------------------------
         fwdbwd_result = training_client.forward_backward(
             input_datums,
