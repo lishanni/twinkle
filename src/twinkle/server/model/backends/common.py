@@ -140,13 +140,27 @@ class TwinkleCompatModelBase:
                 sft_weight = kwargs.pop('dpo_sft_weight', 0.0)
                 self.set_loss(
                     'DPOLoss', adapter_name=adapter_name, beta=beta, loss_type=loss_type, sft_weight=sft_weight)
-                self.add_metric('DPOMetric', adapter_name=adapter_name, beta=beta)
+                # Only add DPOMetric if not already present for this adapter
+                self._ensure_dpo_metric(adapter_name, beta)
             else:
                 epsilon = kwargs.pop('epsilon', 0.2)
                 grpo_beta = kwargs.pop('beta', 0.0)
                 self.set_loss('GRPOLoss', adapter_name=adapter_name, epsilon=epsilon, beta=grpo_beta)
         else:
             self.set_loss('CrossEntropyLoss', adapter_name=adapter_name)
+
+    def _ensure_dpo_metric(self, adapter_name: str, beta: float):
+        """Add DPOMetric for the adapter if not already present.
+
+        This prevents duplicate metric accumulation across training steps.
+        """
+        from twinkle.metric.dpo import DPOMetric
+        optimizer_config = self.optimizer_group[adapter_name]
+        # Check if DPOMetric already exists in training metrics
+        for metric in optimizer_config.train_status.metrics:
+            if isinstance(metric, DPOMetric):
+                return
+        self.add_metric('DPOMetric', adapter_name=adapter_name, beta=beta)
 
     def _tinker_build_output(self, inputs, outputs):
         """Extract logits/logps from model outputs and build per-datum output list."""

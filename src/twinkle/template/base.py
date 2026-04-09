@@ -455,7 +455,7 @@ class Template:
             return_dict=True,
             add_generation_prompt=add_generation_prompt,
             return_tensors='pt',
-            **kwargs)
+            processor_kwargs=kwargs)
         return inputs
 
     def _encode_messages(self, trajectory: Trajectory, add_generation_prompt: bool = False, **kwargs) -> InputFeature:

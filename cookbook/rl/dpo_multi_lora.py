@@ -174,10 +174,10 @@ def main():
         sft_weight=SFT_WEIGHT,
     )
 
-    policy_model.set_loss(loss_fn)
-    policy_model.add_metric(DPOMetric, beta=DPO_BETA)
-    policy_model.set_processor(InputProcessor)
-    policy_model.set_template('Qwen3_5Template', model_id=MODEL_ID)
+    policy_model.set_loss(loss_fn, adapter_name=ADAPTER_NAME)
+    policy_model.add_metric(DPOMetric, beta=DPO_BETA, adapter_name=ADAPTER_NAME)
+    policy_model.set_processor(InputProcessor, adapter_name=ADAPTER_NAME)
+    policy_model.set_template('Qwen3_5Template', model_id=MODEL_ID, adapter_name=ADAPTER_NAME)
 
     optim_step = 0
     backend_name = 'MultiLoRA Megatron'
