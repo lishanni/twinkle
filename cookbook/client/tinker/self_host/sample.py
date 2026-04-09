@@ -20,14 +20,14 @@ from tinker import ServiceClient
 base_model = 'Qwen/Qwen3.5-4B'
 service_client = ServiceClient(
     base_url='http://localhost:8000',
-    api_key='EMPTY-TOKEN'
+    api_key='EMPTY_TOKEN'
 )
 
 # Step 3: Create a sampling client by loading weights from a saved checkpoint.
 # The model_path is a twinkle:// URI pointing to a previously saved LoRA checkpoint.
 # The server will load the base model and apply the LoRA adapter weights.
 sampling_client = service_client.create_sampling_client(
-    # model_path='twinkle://xxx-Qwen_Qwen3.5-4B-xxx/weights/twinkle-lora-1',
+    model_path='twinkle://20260409_202355-Qwen_Qwen3_5-4B-d0360fdb/sampler_weights/20260409_202639',
     base_model=base_model
 )
 
