@@ -91,7 +91,7 @@ class GSM8KBrevityReward(Reward):
 def create_gsm8k_dataset():
     """Create GSM8K dataset."""
     dataset = Dataset(DatasetMeta('ms://modelscope/gsm8k', subset_name='main', split='train', data_slice=range(DATA_NUM)))
-    dataset.set_template('Qwen3_5Template', model_id=f'ms://{BASE_MODEL}', max_length=4096, 
+    dataset.set_template('Qwen3_5Template', model_id=f'ms://{BASE_MODEL}', max_length=4096,
                          truncation_strategy='delete', enable_thinking=False)
     dataset.map(GSM8KProcessor(system=SYSTEM_PROMPT))
     dataset.encode(add_generation_prompt=True)
