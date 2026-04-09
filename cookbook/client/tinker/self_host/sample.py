@@ -8,7 +8,7 @@ import os
 from tinker import types
 
 from twinkle.data_format import Message, Trajectory
-from twinkle.template import Template
+from twinkle.template import Template, Qwen3_5Template
 from twinkle import init_tinker_client
 
 # Step 1: Initialize Tinker client
@@ -27,14 +27,14 @@ service_client = ServiceClient(
 # The model_path is a twinkle:// URI pointing to a previously saved LoRA checkpoint.
 # The server will load the base model and apply the LoRA adapter weights.
 sampling_client = service_client.create_sampling_client(
-    model_path='twinkle://xxx-Qwen_Qwen3.5-4B-xxx/weights/twinkle-lora-1',
+    # model_path='twinkle://xxx-Qwen_Qwen3.5-4B-xxx/weights/twinkle-lora-1',
     base_model=base_model
 )
 
 # Step 4: Load the tokenizer locally to encode the prompt and decode the results
 print(f'Using model {base_model}')
 
-template = Template(model_id=f'ms://{base_model}')
+template = Qwen3_5Template(model_id=f'ms://{base_model}')
 
 trajectory = Trajectory(
     messages=[
@@ -43,7 +43,7 @@ trajectory = Trajectory(
     ]
 )
 
-input_feature = template.encode(trajectory, add_generation_prompt=True)
+input_feature = template.batch_encode([trajectory], add_generation_prompt=True)[0]
 
 input_ids = input_feature['input_ids'].tolist()
 

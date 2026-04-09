@@ -39,7 +39,7 @@ logger = get_logger()
 
 # ========== Configuration ==========
 BASE_MODEL = 'Qwen/Qwen3.5-4B'
-NUM_GENERATIONS = 8
+NUM_GENERATIONS = 4
 MAX_NEW_TOKENS = 4096
 LEARNING_RATE = 1e-5
 MAX_STEPS = 1000
