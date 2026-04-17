@@ -385,15 +385,12 @@ class MSHub(HubOperation):
                 revision=revision,
                 tag=path_in_repo)
         except Exception as exc:
-            raise RuntimeError(
-                f'ModelScope push_to_hub raised an exception '
-                f'(repo_id={repo_id!r}, folder_path={folder_path!r}): {exc}') from exc
+            raise RuntimeError(f'ModelScope push_to_hub raised an exception '
+                               f'(repo_id={repo_id!r}, folder_path={folder_path!r}): {exc}') from exc
         if not result:
-            raise RuntimeError(
-                f'ModelScope push_to_hub returned a falsy result '
-                f'(repo_id={repo_id!r}, folder_path={folder_path!r}). '
-                f'This usually indicates an invalid/expired token or insufficient write permission.'
-            )
+            raise RuntimeError(f'ModelScope push_to_hub returned a falsy result '
+                               f'(repo_id={repo_id!r}, folder_path={folder_path!r}). '
+                               f'This usually indicates an invalid/expired token or insufficient write permission.')
 
     @classmethod
     def load_dataset(cls,
