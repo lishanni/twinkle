@@ -316,14 +316,15 @@ def _register_twinkle_routes(app: FastAPI, self_fn: Callable[[], ModelManagement
             extra_kwargs = body.model_extra or {}
             checkpoint_manager = create_checkpoint_manager(token, client_type='twinkle')
             checkpoint_name = checkpoint_manager.get_ckpt_name(body.name)
-            save_dir = checkpoint_manager.get_save_dir(model_id=adapter_name, is_sampler=False)
+            save_dir = checkpoint_manager.get_save_dir(model_id=adapter_name, is_sampler=body.is_sampler)
             checkpoint_dir = self.model.save(
                 name=checkpoint_name,
                 output_dir=save_dir,
                 adapter_name=adapter_name,
                 save_optimizer=body.save_optimizer,
                 **extra_kwargs)
-            twinkle_path = checkpoint_manager.save(model_id=adapter_name, name=checkpoint_name, is_sampler=False)
+            twinkle_path = checkpoint_manager.save(
+                model_id=adapter_name, name=checkpoint_name, is_sampler=body.is_sampler)
             return {'twinkle_path': twinkle_path, 'checkpoint_dir': checkpoint_dir}
 
         return await run_task(self.schedule_task_and_wait(_task, task_type='save'))
