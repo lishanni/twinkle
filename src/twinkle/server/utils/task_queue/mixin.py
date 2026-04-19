@@ -221,6 +221,8 @@ class TaskQueueMixin:
         model_id: str | None = None,
         token: str | None = None,
         input_tokens: int = 0,
+        batch_size: int | None = None,
+        data_world_size: int | None = None,
         task_type: str | None = None,
     ) -> Any:
         """Schedule a compute task and block until it completes.
@@ -236,6 +238,8 @@ class TaskQueueMixin:
             model_id=model_id,
             token=token,
             input_tokens=input_tokens,
+            batch_size=batch_size,
+            data_world_size=data_world_size,
             task_type=task_type,
         )
         request_id = future_ref.get('request_id')
