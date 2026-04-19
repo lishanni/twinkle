@@ -183,9 +183,6 @@ class TaskQueueMixin:
         if self._event_loop is None:
             self._event_loop = asyncio.get_running_loop()
 
-        logger.info(f'[TaskQueue] Scheduling task {request_id}, type={task_type or "unknown"}, '
-                    f'model_id={model_id}, input_tokens={input_tokens}')
-
         await self.state.store_future_status(
             request_id, TaskStatus.PENDING.value, model_id, queue_state=QueueState.ACTIVE.value)
 
@@ -206,8 +203,9 @@ class TaskQueueMixin:
             ))
         await self.state.store_future_status(
             request_id, TaskStatus.QUEUED.value, model_id, queue_state=QueueState.ACTIVE.value)
-        logger.info(f'[TaskQueue] Task {request_id} queued, queue_key={queue_key}, '
-                    f'queue_size={q.qsize()}, total_queues={len(self._compute_worker.task_queues)}')
+        logger.info(f'[TaskQueue] Task {request_id} queued, type={task_type or "unknown"}, '
+                    f'model_id={model_id}, queue_key={queue_key}, '
+                    f'queue_depth={q.qsize()}, input_tokens={input_tokens}')
 
         self._compute_worker.new_task_event.set()
 

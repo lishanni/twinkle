@@ -200,15 +200,14 @@ class ComputeWorker:
         exec_time = 0.0
         try:
             coro = task.coro_factory()
-            logger.info(f'[ComputeWorker] Task {task.request_id} started, '
-                        f'type={task_type}, queue_key={queue_key}, model_id={task.model_id}')
+            logger.debug(f'[ComputeWorker] Task {task.request_id} executing, '
+                         f'type={task_type}, queue_key={queue_key}')
             if self._config.execution_timeout > 0:
                 result = await asyncio.wait_for(coro, timeout=self._config.execution_timeout)
             else:
                 result = await coro
             exec_time = time.monotonic() - exec_start
-            logger.info(f'[ComputeWorker] Task {task.request_id} completed, '
-                        f'type={task_type}, exec_time={exec_time:.2f}s')
+            logger.info(f'[ComputeWorker] Task {task.request_id} completed in {exec_time:.2f}s, type={task_type}')
             await self._state.store_future_status(
                 task.request_id,
                 TaskStatus.COMPLETED.value,
@@ -227,8 +226,8 @@ class ComputeWorker:
             task_status = 'failed'
             exec_time = time.monotonic() - exec_start
             error = traceback.format_exc()
-            logger.warning(f'[ComputeWorker] Task {task.request_id} FAILED after {exec_time:.2f}s, '
-                           f'type={task_type}, error:\n{traceback.format_exc(limit=3)}')
+            logger.error(f'[ComputeWorker] Task {task.request_id} FAILED after {exec_time:.2f}s, '
+                         f'type={task_type}:\n{traceback.format_exc(limit=3)}')
             await self._store_task_failed(task, error, QueueState.ACTIVE.value)
         finally:
             q.task_done()
@@ -256,14 +255,12 @@ class ComputeWorker:
             except asyncio.QueueEmpty:
                 continue
 
-            # Record queue-wait metrics
+            # Record queue-wait metrics and check queue-level timeout
             queue_wait = time.monotonic() - task.created_at
             self._record_queue_metrics(task.task_type or 'unknown', queue_wait)
 
-            # Check queue-level timeout (task waited too long before execution)
-            waited = time.monotonic() - task.created_at
-            if waited > self._config.queue_timeout:
-                await self._fail_timed_out_task(task, waited, q)
+            if queue_wait > self._config.queue_timeout:
+                await self._fail_timed_out_task(task, queue_wait, q)
                 continue  # try the next queue
 
             # Execute the task (serial: stops after the first execution)
@@ -288,8 +285,8 @@ class ComputeWorker:
                     # All dequeued tasks were timed-out; yield briefly to avoid busy spin.
                     await asyncio.sleep(min(self._config.window_seconds, 0.1))
             except asyncio.CancelledError:
-                logger.warning('[ComputeWorker] Worker cancelled')
+                logger.info('[ComputeWorker] Worker stopped')
                 break
             except Exception:
-                logger.warning(f'[ComputeWorker] Unexpected error:\n{traceback.format_exc(limit=3)}')
+                logger.error(f'[ComputeWorker] Unexpected error:\n{traceback.format_exc(limit=3)}')
                 continue
