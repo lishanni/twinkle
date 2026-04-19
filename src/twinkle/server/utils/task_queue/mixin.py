@@ -246,11 +246,14 @@ class TaskQueueMixin:
         if request_id is None:
             raise RuntimeError(f'Task scheduling failed: {future_ref}')
 
+        poll_interval = 0.05
+        max_poll_interval = 1.0
         while True:
             record = await self.state.get_future(request_id)
             if record and record.get('status') not in ('pending', 'queued', 'running'):
                 break
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(poll_interval)
+            poll_interval = min(poll_interval * 2, max_poll_interval)
 
         if record['status'] == 'failed':
             error = record.get('result', {}).get('error', 'Unknown error')
