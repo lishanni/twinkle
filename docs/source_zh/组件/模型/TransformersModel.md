@@ -11,7 +11,9 @@ class TransformersModel:
                  config: Optional[PretrainedConfig] = None,
                  device_mesh: Optional[DeviceMesh] = None,
                  mixed_precision: Literal['no', 'fp8', 'fp16', 'bf16'] = 'bf16',
-                 strategy: Literal['accelerate', 'native_fsdp'] = 'accelerate',
+                 strategy: Literal['accelerate', 'native_fsdp', 'hyper_parallel'] = 'accelerate',
+                 use_hyper_parallel: bool = False,
+                 hyper_parallel_config: Dict[str, Any] = None,
                  ddp_config: Dict[str, Any] = None,
                  fsdp_config: Dict[str, Any] = None,
                  grad_scaler_config: Dict[str, Any] = None,
@@ -27,7 +29,9 @@ class TransformersModel:
 - config: 拉起模型的配置
 - device_mesh: DeviceMesh信息
 - mixed_precision: 混合精度信息，默认`bf16`，如果有30系以上显卡建议维持不变
-- strategy: 如何封装模型使用多卡训练，默认使用`accelerate`框架。
+- strategy: 如何封装模型使用多卡训练，支持 `accelerate`、`native_fsdp`、`hyper_parallel`，默认 `accelerate`。
+- use_hyper_parallel: 一行开关启用 HyperParallel fully_shard。为 `True` 时会优先使用 HyperParallel。
+- hyper_parallel_config: HyperParallel 策略参数覆盖，如 `tp_size`、`param_dtype`、`reduce_dtype`、`reshard_after_forward` 等。
 - ddp_config: strategy为`accelerate`时的DDP配置，参见：[DDPKwargs](https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/dataclasses.py#L155)
 - fsdp_config: strategy为`accelerate`时的FSDP配置，参见：[FSDPConfig](https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/dataclasses.py#L1566)
 - grad_scaler_config: PyTorch的grad_scaler初始化配置，参见：[PyTorch的GradScaler构造](https://github.com/pytorch/pytorch/blob/main/torch/cuda/amp/grad_scaler.py#L25)

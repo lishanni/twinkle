@@ -82,6 +82,7 @@ sh INSTALL_MEGATRON.sh
 | 训练类型                            | 模型框架              | Cookbook 路径                                          |
 | ----------------------------------- | --------------------- | ----------------------------------------------------- |
 | FSDP 微调                           | transformers          | [脚本](cookbook/transformers/fsdp2.py)                 |
+| HyperParallel FSDP 微调（NPU）      | transformers          | [脚本](cookbook/transformers/hyper_parallel_fsdp2_npu.py) |
 | FSDP MoE 微调                       | transformers          | [脚本](cookbook/transformers/fsdp2_moe.py)             |
 | EP FSDP MoE 微调                    | transformers          | [脚本](cookbook/transformers/ep_fsdp_qwen3_moe.py)    |
 | SP FSDP 微调                        | transformers          | [脚本](cookbook/transformers/sp_fsdp_dense.py)        |
@@ -101,6 +102,9 @@ sh INSTALL_MEGATRON.sh
 | Twinkle 客户端微调（自部署）        | transformers          | [脚本](cookbook/client/twinkle/self_host)              |
 | Twinkle 客户端微调（ModelScope）     | transformers          | [脚本](cookbook/client/twinkle/modelscope)             |
 | 服务端启动脚本                      | transformers/megatron | [脚本](cookbook/client/server)                         |
+
+对于 transformers 路径的 FSDP，可以通过一行配置切换到 HyperParallel fully_shard：
+`TransformersModel(..., use_hyper_parallel=True)`。
 
 Twinkle✨支持相同的算法接口运行在单GPU、torchrun多机、Ray、Client等各场景下。其算法过程是外露的，非常便于修改和调试。完整的框架介绍请查看[快速开始](docs/source_zh/使用指引/快速开始.md)
 

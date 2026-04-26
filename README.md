@@ -92,6 +92,7 @@ sh INSTALL_MEGATRON.sh
 | Training Type                        | Model Framework | Cookbook Path                                          |
 | ------------------------------------ | --------------- | ----------------------------------------------------- |
 | FSDP finetuning                      | transformers    | [Script](cookbook/transformers/fsdp2.py)               |
+| HyperParallel FSDP finetuning (NPU) | transformers    | [Script](cookbook/transformers/hyper_parallel_fsdp2_npu.py) |
 | FSDP MoE finetuning                  | transformers    | [Script](cookbook/transformers/fsdp2_moe.py)           |
 | EP FSDP MoE finetuning               | transformers    | [Script](cookbook/transformers/ep_fsdp_qwen3_moe.py)  |
 | SP FSDP finetuning                   | transformers    | [Script](cookbook/transformers/sp_fsdp_dense.py)      |
@@ -111,6 +112,9 @@ sh INSTALL_MEGATRON.sh
 | Twinkle client finetuning (self-host) | transformers   | [Script](cookbook/client/twinkle/self_host)            |
 | Twinkle client finetuning (ModelScope) | transformers  | [Script](cookbook/client/twinkle/modelscope)           |
 | Server startup scripts               | transformers/megatron | [Script](cookbook/client/server)                 |
+
+For transformers FSDP, you can switch backend to HyperParallel fully_shard with one argument:
+`TransformersModel(..., use_hyper_parallel=True)`.
 
 ## Changelog
 - 🎉2026-04-22 The ModelScope service has been deployed to [Qwen/Qwen3.6-27B](https://www.modelscope.cn/models/Qwen/Qwen3.6-27B) with a new release 0.2.1.
