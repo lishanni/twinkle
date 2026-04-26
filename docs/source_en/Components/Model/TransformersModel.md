@@ -11,7 +11,9 @@ class TransformersModel:
                  config: Optional[PretrainedConfig] = None,
                  device_mesh: Optional[DeviceMesh] = None,
                  mixed_precision: Literal['no', 'fp8', 'fp16', 'bf16'] = 'bf16',
-                 strategy: Literal['accelerate', 'native_fsdp'] = 'accelerate',
+                 strategy: Literal['accelerate', 'native_fsdp', 'hyper_parallel'] = 'accelerate',
+                 use_hyper_parallel: bool = False,
+                 hyper_parallel_config: Dict[str, Any] = None,
                  ddp_config: Dict[str, Any] = None,
                  fsdp_config: Dict[str, Any] = None,
                  grad_scaler_config: Dict[str, Any] = None,
@@ -27,7 +29,9 @@ class TransformersModel:
 - config: Configuration for starting the model
 - device_mesh: DeviceMesh information
 - mixed_precision: Mixed precision information, default `bf16`, recommended to keep unchanged if you have GPUs with 30 series or above
-- strategy: How to encapsulate the model for multi-GPU training, default uses `accelerate` framework.
+- strategy: How to encapsulate the model for multi-GPU training. Supports `accelerate`, `native_fsdp`, and `hyper_parallel`. Default is `accelerate`.
+- use_hyper_parallel: One-line switch to enable HyperParallel fully_shard backend. When `True`, HyperParallel takes priority.
+- hyper_parallel_config: HyperParallel strategy overrides, e.g. `tp_size`, `param_dtype`, `reduce_dtype`, `reshard_after_forward`.
 - ddp_config: DDP configuration when strategy is `accelerate`, see: [DDPKwargs](https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/dataclasses.py#L155)
 - fsdp_config: FSDP configuration when strategy is `accelerate`, see: [FSDPConfig](https://github.com/huggingface/accelerate/blob/main/src/accelerate/utils/dataclasses.py#L1566)
 - grad_scaler_config: PyTorch's grad_scaler initialization configuration, see: [PyTorch's GradScaler constructor](https://github.com/pytorch/pytorch/blob/main/torch/cuda/amp/grad_scaler.py#L25)

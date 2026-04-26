@@ -71,7 +71,7 @@ def normalize_and_clip_grad_norm(parameters: Iterable[torch.nn.Parameter],
 
     has_mixed_dtensor_mesh = len(dtensor_mesh_keys) > 1
 
-    if not (has_dtensor_grad and has_local_tensor_grad) and not has_mixed_dtensor_mesh:
+    if not has_dtensor_grad and not has_mixed_dtensor_mesh:
         grad_norm = torch.nn.utils.clip_grad_norm_(
             parameters,
             max_grad_norm,

@@ -134,3 +134,19 @@ class AccelerateStrategy:
             state_dict[name] = local.cpu()
             del local
         return state_dict
+
+    def wrap_optimizer(self, optimizer):
+        """Wrap optimizer with strategy-specific behavior. Default: pass-through."""
+        return optimizer
+
+    def adjust_optimizer_kwargs(self, optimizer_cls, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+        """Adjust optimizer kwargs for strategy compatibility. Default: pass-through."""
+        return kwargs
+
+    def get_ep_clip_kwargs(self, model) -> Dict[str, Any]:
+        """Return kwargs for EP-aware gradient norm clipping. Default: empty dict."""
+        return {}
+
+    def log_device_memory(self, model, logger, tag: str = '') -> None:
+        """Log device memory usage. Default: no-op."""
+        pass

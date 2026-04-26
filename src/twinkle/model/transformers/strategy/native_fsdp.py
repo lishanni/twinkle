@@ -215,6 +215,14 @@ class NativeFSDPStrategy:
 
         return state_dict
 
+    def wrap_optimizer(self, optimizer):
+        """No-op: NativeFSDP does not require optimizer wrapping."""
+        return optimizer
+
+    def log_device_memory(self, model, logger, tag: str = '') -> None:
+        """No-op: Use platform utilities directly for memory logging."""
+        pass
+
 
 def _detect_ep_expert_names(model: nn.Module) -> Set[str]:
     candidate_names = set()
