@@ -42,6 +42,8 @@ def train():
     # Global batch size = 8, for GPUs, so 1 sample per GPU
     dataloader = DataLoader(dataset=dataset, batch_size=8)
     # Use a TransformersModel
+    # One-line switch for HyperParallel backend:
+    # model = TransformersModel(model_id='ms://Qwen/Qwen3.5-4B', use_hyper_parallel=True)
     model = TransformersModel(model_id='ms://Qwen/Qwen3.5-4B')
     model.model._no_split_modules = {'Qwen3_5DecoderLayer'}
 
