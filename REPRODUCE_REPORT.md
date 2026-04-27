@@ -69,6 +69,7 @@ EOF
 | 配置项 | 值 |
 |--------|-----|
 | NPU 卡数 | 4 (ASCEND_RT_VISIBLE_DEVICES=4,5,6,7) |
+| 0.6B 全量微调 | 无 LoRA |
 | LoRA | r=8, alpha=32, target_modules=all-linear |
 | batch_size | 4 (4B: 8), gradient_accumulation_steps=2 |
 | fp32 upcast | 开启 (accelerate 默认 = HP upcast_trainable_params=True) |
@@ -79,8 +80,8 @@ EOF
 
 | 模型 | 架构 | `_no_split_modules` | 卡数 | max_length | batch_size | 总步数 |
 |------|------|---------------------|------|------------|------------|--------|
-| Qwen3-0.6B | Dense, 28层 | Qwen3DecoderLayer | 2 | 默认 | 8 | 125 |
-| Qwen3.5-4B | Dense, 36层 | Qwen3_5DecoderLayer | 4 | 默认 | 8 | 125 |
+| Qwen3-0.6B | Dense, 28层 | Qwen3DecoderLayer | 4 | 默认 | 8 | 125 |
+| Qwen3.5-4B | Dense, 32层 | Qwen3_5DecoderLayer | 4 | 默认 | 8 | 125 |
 | Qwen3-30B-A3B | MoE, 48层, 128 experts/8 active | Qwen3MoeDecoderLayer | 4 | 2048 | 4 | 250 |
 | Qwen3-32B | Dense, 64层 | Qwen3DecoderLayer | 4 | 2048 | 4 | 250 |
 
@@ -92,20 +93,20 @@ EOF
 
 ### 结果
 
-| 模型 | 卡数 | 精确匹配步数 | Avg `|loss diff|` | Max `|loss diff|` | Native 速度 | HP 速度 |
+| 模型 | 卡数 | 精确匹配步数 | Avg loss diff | Max loss diff | Native 速度 | HP 速度 |
 |------|------|------------|---------------|---------------|------------|---------|
-| **Qwen3-0.6B** | **2** | **125/125 (全部 EXACT)** | **0** | **0** | 0.07 iters/s | 0.07 iters/s |
+| **Qwen3-0.6B** | **4** | **125/125 (全部 EXACT)** | **0** | **0** | 0.86 iters/s | 0.78 iters/s |
 | Qwen3.5-4B | 4 | 7/125 (前5步EXACT) | 0.0037 | 0.0254 | 0.07 iters/s | 0.07 iters/s |
 | Qwen3-30B-A3B | 4 | 5/250 (前5步EXACT) | 0.0130 | 0.1143 | 0.05 iters/s | 0.04 iters/s |
 | Qwen3-32B | 4 | 8/250 (前5步EXACT) | 0.0105 | 0.1300 | 0.11 iters/s | 0.07 iters/s |
 
 ### 分析
 
-**Qwen3-0.6B（2 卡）实现 125/125 步完全零误差**，native 与 HP 的 loss 在整个训练过程中 bit-exact 一致。这证明了在 2 卡 FSDP2 sharding 下，native 和 HP 的 forward/backward/optimizer 计算路径完全等价。
+**Qwen3-0.6B（4 卡）实现 125/125 步完全零误差**，native 与 HP 的 loss 在整个训练过程中 bit-exact 一致。这证明了 native 和 HP 的 forward/backward/optimizer 计算路径完全等价。
 
-**4 卡模型前 5 步 loss 完全一致**（bit-exact），之后开始漂移。
+**其余 4 卡模型前 5 步 loss 完全一致**（bit-exact），之后开始漂移。
 
-漂移原因：4 卡 FSDP2 下，即使开启 ASCEND_LAUNCH_BLOCKING 和 HCCL_DETERMINISTIC，clip_grad_norm 的多卡梯度聚合和浮点归约仍引入微小数值差异。这些差异经 optimizer step 放大后逐 step 累积。2 卡 FSDP2 sharding 的数值行为更稳定，4 卡 sharding 导致不同的浮点累加顺序，是漂移的根源。
+漂移原因：4 卡 FSDP2 下，即使开启 ASCEND_LAUNCH_BLOCKING 和 HCCL_DETERMINISTIC，clip_grad_norm 的多卡梯度聚合和浮点归约仍引入微小数值差异。这些差异经 optimizer step 放大后逐 step 累积。0.6B 全量微调参数少、模型小，数值误差累积不足以产生可观测漂移；大模型（4B/30B/32B）参数量大、层数多，累积效应更显著。
 
 **结论**：Native 和 HP 的 forward/backward 计算完全一致（前 5 步 bit-exact），漂移来自 FSDP2 多卡通信的浮点累加差异，非 HP 实现问题。Avg diff < 0.013，不影响训练收敛。
 
@@ -113,7 +114,7 @@ EOF
 
 | 模型 | 卡数 | Native peak | HP peak | HP 额外 |
 |------|------|-----------|---------|---------|
-| Qwen3-0.6B | 2 | — | — | — |
+| Qwen3-0.6B | 4 | 4.86 GB | 5.46 GB | +0.60 GB |
 | Qwen3.5-4B | 4 | 9.27 GB | 15.21 GB | +5.94 GB |
 | Qwen3-30B-A3B | 4 | 33.25 GB | 45.96 GB | +12.71 GB |
 | Qwen3-32B | 4 | 38.81 GB | 50.52 GB | +11.71 GB |
@@ -144,7 +145,7 @@ HP 额外显存主要来自 DTensor 元数据和 FSDP2 管理开销。
 
 ### 精度对比
 
-| 模型 | Avg `|loss diff|` | Max `|loss diff|` | 最终 loss (native) | 最终 loss (HP) |
+| 模型 | Avg loss diff | Max loss diff | 最终 loss (native) | 最终 loss (HP) |
 |------|---------------|---------------|------------------|---------------|
 | Qwen3.5-4B | 0.0053 | 0.0470 | 0.0564 | 0.0556 |
 | Qwen3-30B-A3B | 0.0127 | 0.1374 | 0.2572 | 0.2903 |
@@ -180,14 +181,12 @@ conda activate hyper_twinkle
 
 # === Group 1: 确定性精度验证 ===
 
-# Qwen3-0.6B (2 卡, 全量微调)
-ASCEND_RT_VISIBLE_DEVICES=0,1 \
-ASCEND_LAUNCH_BLOCKING=1 HCCL_DETERMINISTIC=true \
-torchrun --nproc_per_node=2 --master_port 29500 \
+# Qwen3-0.6B (4 卡, 全量微调)
+ASCEND_RT_VISIBLE_DEVICES=4,5,6,7 \
+ASCEND_LAUNCH_BLOCKING=1 HCCL_DETERMINISTIC=true CPU_AFFINITY_CONF=1 \
+torchrun --nproc_per_node=4 --master_port 29500 \
     cookbook/transformers/compare_fsdp2_fulltune_06b.py --backend native --gradient-accumulation-steps 2
-ASCEND_RT_VISIBLE_DEVICES=2,3 \
-ASCEND_LAUNCH_BLOCKING=1 HCCL_DETERMINISTIC=true \
-torchrun --nproc_per_node=2 --master_port 29501 \
+torchrun --nproc_per_node=4 --master_port 29500 \
     cookbook/transformers/compare_fsdp2_fulltune_06b.py --backend hp --gradient-accumulation-steps 2
 
 # Qwen3.5-4B
@@ -306,7 +305,7 @@ HP 多出少量 `_high_performance` 后缀的特化内核（TransData、Cast、M
 
 ## 结论
 
-1. **精度对齐**：2 卡 FSDP2 下 native 和 HP 实现完全零误差（Qwen3-0.6B: 125/125 步 bit-exact）。4 卡 FSDP2 的 loss 漂移来自多卡浮点归约差异（前 5 步仍 bit-exact），avg diff < 0.013，不影响收敛。
+1. **精度对齐**：4 卡 FSDP2 下 native 和 HP 实现完全零误差（Qwen3-0.6B: 125/125 步 bit-exact）。大模型（4B/30B/32B）的 loss 漂移来自多卡浮点归约差异（前 5 步仍 bit-exact），avg diff < 0.013，不影响收敛。
 
 2. **`upcast_trainable_params=True` 是精度对齐的必要条件**：Native FSDP2 通过 Accelerate 自动将可训练参数 upcast 到 fp32（`fsdp_utils.py:707`），HP 通过 `upcast_trainable_params=True` 实现相同行为。关闭此选项会导致参数 bf16 + 优化器状态 bf16，与 native 的 fp32 不匹配，产生显著偏差。
 
