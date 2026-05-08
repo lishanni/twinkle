@@ -6,12 +6,12 @@
 |------|------|
 | OS | openEuler 22.03 LTS-SP1 (aarch64) |
 | NPU | 8x Ascend 910B3 (npu-smi 26.0.rc1) |
-| CANN | 8.5.0 (`/home/lsn/Ascend/cann-8.5.0`) |
+| CANN | 8.5.0 (`~/Ascend/cann-8.5.0`) |
 | conda 环境 | `hyper_twinkle` |
 | Python | 3.11.15 |
 | PyTorch | 2.7.1+cpu |
 | torch_npu | 2.7.1 |
-| hyper_parallel | 0.1.0 (editable, `/home/lsn/hyper-parallel-master`, master) |
+| hyper_parallel | 0.1.0 (editable, `~/hyper-parallel-master`, master) |
 | transformers | 5.6.2 |
 | twinkle-kit | 0.3.0.dev0 (editable) |
 

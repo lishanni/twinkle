@@ -58,7 +58,7 @@ hyper_parallel 0.1.0
 |------|------|------|-----------|
 | torch_npu | 2.7.1 | PyPI | 仅 NPU |
 | hccl | 0.1.0 | CANN 8.5.0 | 仅 NPU |
-| CANN toolkit | 8.5.0 | 系统安装 (/home/lsn/Ascend/) | 仅 NPU |
+| CANN toolkit | 8.5.0 | 系统安装 (~/Ascend/) | 仅 NPU |
 
 ### 2.3 传递依赖（关键路径）
 
@@ -243,7 +243,7 @@ twinkle-kit 0.3.0.dev0
 ├── torch 2.7.1+cpu
 │   ├── filelock, fsspec, jinja2, networkx, sympy, typing-extensions
 │   └── [auto-loads] torch_npu 2.7.1 (if TORCH_DEVICE_BACKEND_AUTOLOAD=1)
-└── hyper_parallel 0.1.0 (editable: /home/lsn/hyper-parallel-master)
+└── hyper_parallel 0.1.0 (editable: ~/hyper-parallel-master)
     ├── numpy (声明: >=1.20.0,<2.0.0, 实际兼容 2.x)
     └── [隐式] torch, torch_npu, transformers
 ```
